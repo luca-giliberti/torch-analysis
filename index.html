@@ -1,0 +1,2985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Torch Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #131313;
+    --card: #1c1c1c;
+    --card2: #242424;
+    --border: #2e2e2e;
+    --accent: #e8a020;
+    --accent2: #c97d00;
+    --red: #e05555;
+    --green: #4caf7d;
+    --yellow: #f0c040;
+    --text: #f0f0f0;
+    --muted: #888888;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; min-height: 100vh; padding-bottom: 70px; }
+
+  /* ── NAV ── */
+  .nav { position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0; font-size: 10px; color: var(--muted); background: none; border: none; cursor: pointer; transition: color .15s; }
+  .nav-btn.active { color: var(--accent); }
+  .nav-btn svg { width: 22px; height: 22px; }
+
+  /* ── HEADER ── */
+  .header { padding: 16px 16px 8px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 45px; font-weight: 700; letter-spacing: -.5px; color: var(--accent); }
+  .header h1 span { color: var(--accent); }
+  .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+
+  /* ── PAGES ── */
+  .page { display: none; padding: 0 12px; }
+  .page.active { display: block; }
+
+  /* ── UPLOAD ── */
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px 20px; text-align: center; margin: 20px 0; cursor: pointer; transition: border-color .2s; }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); }
+  .upload-zone svg { width: 48px; height: 48px; color: var(--muted); margin-bottom: 12px; }
+  .upload-zone p { color: var(--muted); font-size: 14px; }
+  .upload-zone strong { color: var(--text); display: block; font-size: 16px; margin-bottom: 6px; }
+  #fileInput { display: none; }
+  .loaded-files { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+  .loaded-file { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; }
+  .loaded-file-info { display: flex; flex-direction: column; gap: 2px; }
+  .loaded-file-name { font-size: 14px; font-weight: 600; }
+  .loaded-file-meta { font-size: 12px; color: var(--muted); }
+  .remove-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; font-size: 18px; line-height: 1; }
+  .remove-btn:hover { color: var(--red); }
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; }
+  .btn.secondary { background: var(--card2); color: var(--text); }
+
+  /* ── SEARCH ── */
+  .search-bar { position: relative; margin: 8px 0 12px; }
+  .search-bar input { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px 11px 38px; color: var(--text); font-size: 15px; outline: none; }
+  .search-bar input::placeholder { color: var(--muted); }
+  .search-bar svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 18px; height: 18px; }
+
+  /* ── SORT BAR ── */
+  .sort-bar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+  .sort-bar::-webkit-scrollbar { display: none; }
+  .sort-chip { background: var(--card2); border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 5px 12px; font-size: 12px; white-space: nowrap; cursor: pointer; transition: all .15s; }
+  .sort-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ── TEAM CARD (list) ── */
+  .team-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .team-card { background: var(--card); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: background .15s; border: 1px solid var(--border); }
+  .team-card:active { background: var(--card2); }
+  .team-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .team-num { font-size: 18px; font-weight: 700; }
+  .epa-badge { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+  .epa-high { background: rgba(76,175,125,.2); color: var(--green); }
+  .epa-mid  { background: rgba(240,192,64,.2); color: var(--yellow); }
+  .epa-low  { background: rgba(224,85,85,.2);  color: var(--red); }
+  .team-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .stat { text-align: center; }
+  .stat-val { font-size: 15px; font-weight: 700; }
+  .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 1px; }
+  .rank-num { color: var(--muted); font-size: 13px; font-weight: 600; min-width: 24px; }
+
+  /* ── TEAM DETAIL ── */
+  .back-btn { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 15px; background: none; border: none; cursor: pointer; padding: 10px 0; }
+  .detail-hero { background: var(--card); border-radius: var(--radius); padding: 20px; margin: 8px 0; border: 1px solid var(--border); }
+  .detail-team-num { font-size: 36px; font-weight: 800; }
+  .detail-matches { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 16px 0 8px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat-card { background: var(--card); border-radius: 10px; padding: 14px 10px; text-align: center; border: 1px solid var(--border); }
+  .stat-card-val { font-size: 22px; font-weight: 800; }
+  .stat-card-lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .ability-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ability-chip { border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; }
+  .chip-yes { background: rgba(76,175,125,.15); color: var(--green); border: 1px solid rgba(76,175,125,.3); }
+  .chip-no  { background: rgba(255,255,255,.05); color: var(--muted); border: 1px solid var(--border); }
+  .incident-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .incident-chip { border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; background: rgba(224,85,85,.1); color: var(--red); border: 1px solid rgba(224,85,85,.2); }
+  .match-row { background: var(--card); border-radius: 10px; padding: 12px 14px; margin-bottom: 6px; border: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .match-num { font-weight: 700; font-size: 14px; min-width: 28px; }
+  .match-alliance { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+  .alliance-red  { background: rgba(224,85,85,.2); color: var(--red); }
+  .alliance-blue { background: rgba(240,165,0,.2); color: var(--accent); }
+  .match-details { flex: 1; display: flex; gap: 14px; font-size: 13px; }
+  .match-detail-item { display: flex; flex-direction: column; align-items: center; }
+  .match-detail-val { font-weight: 700; }
+  .match-detail-lbl { font-size: 10px; color: var(--muted); }
+
+  /* ── COMPARE ── */
+  .compare-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .compare-input { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text); font-size: 15px; width: 100%; outline: none; text-align: center; font-weight: 700; }
+  .compare-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .compare-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; background: var(--card); border-radius: 10px; padding: 12px; border: 1px solid var(--border); }
+  .compare-val { font-size: 18px; font-weight: 800; text-align: center; }
+  .compare-lbl { font-size: 11px; color: var(--muted); text-align: center; font-weight: 600; }
+  .compare-winner { color: var(--green); }
+  .compare-loser  { color: var(--muted); }
+
+  /* ── CHARTS ── */
+  .selector-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .selector-bar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .selector-bar::-webkit-scrollbar { display: none; }
+  .selector-chip { background: var(--card2); border: 1px solid var(--border); color: var(--muted); border-radius: 20px; padding: 6px 14px; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: all .15s; flex-shrink: 0; }
+  .selector-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chart-dropdown { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
+  .chart-dropdown:empty { display: none; }
+  .chart-dropdown-item { padding: 11px 14px; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .chart-dropdown-item:last-child { border-bottom: none; }
+  .chart-dropdown-item:active { background: var(--card2); }
+  .chart-dropdown-item .item-meta { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .chart-selected-team { background: var(--accent); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .chart-clear-btn { background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
+
+  /* ── NOTES ── */
+  .notes-team-row { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+  .notes-team-row:active { background: var(--card2); }
+  .notes-team-row-left { display: flex; flex-direction: column; gap: 3px; }
+  .notes-team-row-num { font-size: 18px; font-weight: 800; }
+  .notes-team-row-meta { font-size: 12px; color: var(--muted); }
+  .notes-team-row-right { display: flex; align-items: center; gap: 8px; }
+  .notes-chevron { color: var(--muted); }
+  .match-row-note { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+  .match-row-note:active { background: var(--card2); }
+  .match-row-note-left { display: flex; flex-direction: column; gap: 4px; }
+  .match-row-note-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .match-row-note-sub { font-size: 12px; color: var(--muted); }
+  .note-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .note-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .note-team { font-size: 17px; font-weight: 800; }
+  .note-meta { display: flex; gap: 6px; align-items: center; }
+  .note-scout { font-size: 12px; color: var(--muted); }
+  .note-section { margin-bottom: 14px; }
+  .note-section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .note-body { display: flex; flex-direction: column; gap: 6px; }
+  .note-line { font-size: 14px; color: var(--text); line-height: 1.6; }
+  .note-line span { color: var(--muted); margin-right: 4px; }
+  .note-incidents { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ── EMPTY ── */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty svg { width: 56px; height: 56px; margin-bottom: 16px; opacity: .4; }
+  .empty p { font-size: 15px; }
+
+  /* ── MISC ── */
+  .divider { height: 1px; background: var(--border); margin: 12px 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; }
+  .tag { font-size: 11px; background: var(--card2); color: var(--muted); padding: 2px 8px; border-radius: 6px; }
+  .color-green { color: var(--green); }
+  .color-yellow { color: var(--yellow); }
+  .color-red { color: var(--red); }
+  .color-accent { color: var(--accent); }
+
+  /* ── LOCK SCREEN ── */
+  .lock-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px;
+  }
+  .lock-overlay.hidden { display: none; }
+  .lock-logo { font-size: 42px; font-weight: 800; color: var(--accent); letter-spacing: -1px; margin-bottom: 6px; }
+  .lock-logo span { color: var(--accent2); }
+  .lock-sub { font-size: 13px; color: var(--muted); margin-bottom: 36px; }
+  .lock-box { width: 100%; max-width: 320px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+  .lock-box h2 { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 16px; text-align: center; }
+  .lock-input { width: 100%; background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; color: var(--text); font-size: 16px; outline: none; -webkit-appearance: none; margin-bottom: 12px; letter-spacing: 2px; }
+  .lock-input.shake { animation: shake .3s ease; }
+  .lock-btn { width: 100%; background: var(--accent); border: none; border-radius: 10px; padding: 13px; color: #131313; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .lock-err { font-size: 12px; color: #f87171; text-align: center; margin-top: 10px; min-height: 16px; }
+  @keyframes shake {
+    0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)}
+  }
+</style>
+</head>
+<body>
+
+
+<!-- ── AI LOCK ── -->
+<div class="lock-overlay hidden" id="ai-lock">
+  <div class="lock-logo" id="ai-lock-logo">AI <span>Scout</span></div>
+  <div class="lock-sub">Restricted Access</div>
+  <div style="font-size:14px;color:#888888;text-align:center;margin-bottom:20px;line-height:1.5;">Restricted access — please enter password</div>
+  <div class="lock-box">
+    <h2 id="ai-lock-title">AI Access Password</h2>
+    <input class="lock-input" id="ai-lock-input" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')submitAILock()">
+    <button class="lock-btn" onclick="submitAILock()">Unlock</button>
+    <div class="lock-err" id="ai-lock-err"></div>
+  </div>
+</div>
+
+<!-- ── NAVIGATION ── -->
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPage('rankings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Rankings
+  </button>
+  <button class="nav-btn" onclick="showPage('teams')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Teams
+  </button>
+  <button class="nav-btn" onclick="showPage('compare')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Compare
+  </button>
+  <button class="nav-btn" onclick="showPage('charts')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    Charts
+  </button>
+  <button class="nav-btn" onclick="showPage('notes')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    Notes
+  </button>
+  <button class="nav-btn" onclick="showPage('predict')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Predict
+  </button>
+  <button class="nav-btn" onclick="showPage('rotation')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+    Rotation
+  </button>
+  <button class="nav-btn" onclick="showPage('picklist')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    Picklist
+  </button>
+  <button class="nav-btn" onclick="showPage('schedule')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Schedule
+  </button>
+  <button class="nav-btn" onclick="requestImportPage()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Import
+  </button>
+</nav>
+
+<!-- ══ PAGE: PICKLIST ══ -->
+<div id="page-picklist" class="page">
+  <div class="header"><h1>Alliance <span>Picklist</span></h1></div>
+  <div style="padding:0 4px">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Your Team</div>
+      <input id="picklist-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Enter your team number"
+        style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-size:16px;font-weight:700;outline:none;-webkit-appearance:none;"
+        oninput="picklistMyTeam=this.value.trim();localStorage.setItem('frc_picklist_myteam',picklistMyTeam);renderPicklist()">
+    </div>
+    <div id="picklist-suggestion" style="display:none;background:var(--card);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;"></div>
+    <div class="selector-bar" style="margin-bottom:10px">
+      <div class="selector-chip active" id="pl-filter-all" onclick="setPlFilter('all')">All</div>
+      <div class="selector-chip" id="pl-filter-available" onclick="setPlFilter('available')">Available</div>
+      <div class="selector-chip" id="pl-filter-taken" onclick="setPlFilter('taken')">Taken</div>
+      <div class="selector-chip" id="pl-filter-dnp" onclick="setPlFilter('dnp')">DNP</div>
+    </div>
+    <div id="picklist-list"></div>
+    <button class="btn secondary" onclick="resetPicklistStatuses()" style="margin-top:12px;width:100%">Reset All Statuses</button>
+  </div>
+</div>
+
+<!-- ══ PAGE: SCHEDULE ══ -->
+<div id="page-schedule" class="page">
+  <div class="header"><h1>Match <span>Schedule</span></h1></div>
+  <div style="padding:0 4px">
+    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+      <input id="schedule-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Your team #"
+        style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;"
+        oninput="scheduleMyTeam=this.value.trim();renderSchedule()">
+      <div class="selector-bar" style="margin:0">
+        <div class="selector-chip active" id="sched-filter-all" onclick="setSchedFilter('all')">All</div>
+        <div class="selector-chip" id="sched-filter-mine" onclick="setSchedFilter('mine')">Mine</div>
+      </div>
+    </div>
+    <div id="schedule-list"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: CHARTS ══ -->
+<div id="page-charts" class="page">
+  <div class="header"><h1>Team <span>Charts</span></h1></div>
+  <div style="padding: 0 4px">
+
+    <!-- Mode selector -->
+    <div class="selector-label">Mode</div>
+    <div class="selector-bar" style="margin-bottom:14px">
+      <div class="selector-chip active" id="mode-perMatch"    onclick="setChartMode('perMatch')">Per Match</div>
+      <div class="selector-chip"        id="mode-overEvents"  onclick="setChartMode('overEvents')">Over Events</div>
+      <div class="selector-chip"        id="mode-compare"     onclick="setChartMode('compare')">Compare</div>
+      <div class="selector-chip"        id="mode-overlay"     onclick="setChartMode('overlay')">Overlay</div>
+    </div>
+
+    <!-- ── PER MATCH ── -->
+    <div id="chart-mode-perMatch">
+    <!-- Team search -->
+    <div class="selector-label">Teams <span style="font-weight:400;text-transform:none;letter-spacing:0">(up to 10)</span></div>
+    <div class="search-bar" style="margin:0 0 4px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="chart-team-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Add a team number…" oninput="filterChartTeams()" autocomplete="off">
+    </div>
+    <div id="chart-team-dropdown" class="chart-dropdown"></div>
+    <div id="chart-teams-selected" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:0"></div>
+
+    <!-- Chart type -->
+    <div class="selector-label" style="margin-top:6px">Chart Type</div>
+    <div class="selector-bar">
+      <div class="selector-chip active" id="ctype-bar"  onclick="setChartType('bar')">Bar</div>
+      <div class="selector-chip"        id="ctype-line" onclick="setChartType('line')">Line</div>
+      <div class="selector-chip"        id="ctype-dot"  onclick="setChartType('dot')">Dot</div>
+    </div>
+
+    <!-- Category -->
+    <div class="selector-label" style="margin-top:12px">Category</div>
+    <div class="selector-bar">
+      <div class="selector-chip active" id="cat-Scoring"  onclick="setChartCat('Scoring')">Scoring</div>
+      <div class="selector-chip"        id="cat-Accuracy" onclick="setChartCat('Accuracy')">Accuracy</div>
+      <div class="selector-chip"        id="cat-Auto"     onclick="setChartCat('Auto')">Auto</div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="selector-label" style="margin-top:12px">Metric</div>
+    <div class="selector-bar" id="chart-metric-bar"></div>
+
+    <!-- Avg toggle -->
+    <div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="show-avg" onchange="renderChart()" style="accent-color:var(--accent)"> Show average line
+      </label>
+    </div>
+
+    <!-- Chart -->
+    <div id="chart-container" style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-top:4px;">
+      <canvas id="main-chart"></canvas>
+      <div id="chart-empty" class="empty" style="padding:40px 0"><p>Select a team and metric</p></div>
+    </div>
+    </div><!-- end chart-mode-perMatch -->
+
+    <!-- ── OVER EVENTS ── -->
+    <div id="chart-mode-overEvents" style="display:none">
+      <div class="selector-label">Team</div>
+      <div class="search-bar" style="margin:0 0 4px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="oe-team-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Type a team number…" oninput="filterOETeam()" autocomplete="off">
+      </div>
+      <div id="oe-team-dropdown" class="chart-dropdown"></div>
+      <div id="oe-team-selected" style="margin-bottom:10px;font-size:14px;font-weight:700;color:var(--accent)"></div>
+
+      <div class="selector-label" style="margin-top:6px">Metric</div>
+      <div class="selector-bar" id="oe-metric-bar"></div>
+
+      <div id="oe-chart-container" style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+        <canvas id="oe-chart"></canvas>
+        <div id="oe-empty" class="empty" style="padding:40px 0"><p>Select a team and metric</p></div>
+      </div>
+    </div>
+
+    <!-- ── COMPARE ── -->
+    <div id="chart-mode-compare" style="display:none">
+      
+      <div id="cmp-team-picker">
+        <div class="search-bar" style="margin:0 0 4px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="cmp-team-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Add a team…" oninput="filterCmpTeams()" autocomplete="off">
+        </div>
+        <div id="cmp-team-dropdown" class="chart-dropdown"></div>
+        <div id="cmp-teams-selected" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+      </div>
+
+      <div class="selector-label">Dependent Variable (Y axis)</div>
+      <div class="selector-bar" id="cmp-metric-bar"></div>
+
+      <div class="selector-label" style="margin-top:12px">Sort</div>
+      <div class="selector-bar" style="margin-bottom:12px">
+        <div class="selector-chip active" id="cmp-sort-desc" onclick="setCmpSort('desc')">Highest first</div>
+        <div class="selector-chip" id="cmp-sort-asc" onclick="setCmpSort('asc')">Lowest first</div>
+        <div class="selector-chip" id="cmp-sort-team" onclick="setCmpSort('team')">By team #</div>
+      </div>
+
+      <div id="cmp-chart-container" style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+        <canvas id="cmp-chart"></canvas>
+        <div id="cmp-empty" class="empty" style="padding:40px 0"><p>Select a metric to compare</p></div>
+      </div>
+    </div>
+
+    <!-- ── OVERLAY ── -->
+    <div id="chart-mode-overlay" style="display:none">
+
+      <div class="selector-label">Teams <span style="font-weight:400;text-transform:none;letter-spacing:0">(up to 6)</span></div>
+      <div class="search-bar" style="margin:0 0 4px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="ov-team-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Add a team number…" oninput="filterOvTeams()" autocomplete="off">
+      </div>
+      <div id="ov-team-dropdown" class="chart-dropdown"></div>
+      <div id="ov-teams-selected" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;min-height:0"></div>
+
+      <div class="selector-label">Metrics <span style="font-weight:400;text-transform:none;letter-spacing:0">(select multiple)</span></div>
+      <div id="ov-metrics-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;"></div>
+
+      <div class="selector-label" style="margin-top:4px">X Axis</div>
+      <div class="selector-bar" style="margin-bottom:10px">
+        <div class="selector-chip active" id="ov-x-teams"   onclick="setOvX('teams')">By Team</div>
+        <div class="selector-chip"        id="ov-x-matches" onclick="setOvX('matches')">Match History</div>
+        <div class="selector-chip"        id="ov-x-events"  onclick="setOvX('events')">By Event</div>
+      </div>
+
+      <div class="selector-label">Chart Type</div>
+      <div class="selector-bar" style="margin-bottom:10px">
+        <div class="selector-chip active" id="ov-type-bar"  onclick="setOvType('bar')">Bar</div>
+        <div class="selector-chip"        id="ov-type-line" onclick="setOvType('line')">Line</div>
+        <div class="selector-chip"        id="ov-type-dot"  onclick="setOvType('dot')">Dot</div>
+      </div>
+
+      <div id="ov-empty" class="empty" style="padding:40px 0;margin-top:4px;"><p>Select teams and metrics to overlay</p></div>
+      <div id="ov-charts-grid" style="display:none;gap:10px;margin-top:4px;"></div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ PAGE: NOTES ══ -->
+<div id="page-notes" class="page">
+  <!-- Level 1: Team list -->
+  <div id="notes-level-teams">
+    <div class="header"><h1>Scout <span>Notes</span></h1></div>
+    <div style="padding: 0 4px">
+      <div class="search-bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="notes-search" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Search team number…" oninput="renderNotes()">
+      </div>
+      <div id="notes-list"></div>
+    </div>
+  </div>
+
+  <!-- Level 2: Match list for a team -->
+  <div id="notes-level-matches" style="display:none">
+    <div class="header" style="align-items:center">
+      <button class="back-btn" style="padding:0" onclick="notesBack('teams')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        Notes
+      </button>
+    </div>
+    <div style="padding: 0 4px" id="notes-matches-content"></div>
+  </div>
+
+  <!-- Level 3: Full note for a single match -->
+  <div id="notes-level-detail" style="display:none">
+    <div class="header" style="align-items:center">
+      <button class="back-btn" style="padding:0" onclick="notesBack('matches')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        <span id="notes-detail-back-label">Team</span>
+      </button>
+    </div>
+    <div style="padding: 0 4px" id="notes-detail-content"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: RANKINGS ══ -->
+<div id="page-rankings" class="page active">
+  <div class="header">
+    <h1>Torch <span>Analysis</span></h1>
+    <span class="badge" id="team-count-badge">0 teams</span>
+  </div>
+  <div style="padding: 0 4px">
+    <div class="sort-bar" id="sort-bar">
+      <div class="sort-chip active" onclick="setSort('epa')">EPA</div>
+      <div class="sort-chip" onclick="setSort('passing')">Passing</div>
+      <div class="sort-chip" onclick="setSort('autoShots')">Auto</div>
+      <div class="sort-chip" onclick="setSort('defense')">Defense</div>
+      <div class="sort-chip" onclick="setSort('speed')">Speed</div>
+    </div>
+    <div class="team-list" id="rankings-list"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: TEAMS ══ -->
+<div id="page-teams" class="page">
+  <div class="header"><h1>Team <span>Lookup</span></h1></div>
+  <div style="padding: 0 4px">
+    <div class="search-bar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="team-search" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Search team number…" oninput="renderTeamSearch()">
+    </div>
+    <div id="team-search-results"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: COMPARE ══ -->
+<div id="page-compare" class="page">
+  <div class="header"><h1>Team <span>Compare</span></h1></div>
+  <div style="padding: 0 4px">
+    <div class="compare-inputs">
+      <input class="compare-input" id="compare-a" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team A" oninput="renderCompare()">
+      <input class="compare-input" id="compare-b" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team B" oninput="renderCompare()">
+    </div>
+    <div id="compare-results"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: PREDICT ══ -->
+<div id="page-predict" class="page">
+  <div class="header"><h1>Match <span>Predict</span></h1></div>
+  <div style="padding: 0 4px 24px;">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+
+      <div style="background:rgba(224,85,85,.08);border:1px solid rgba(224,85,85,.35);border-radius:var(--radius);padding:14px;">
+        <div style="font-size:12px;font-weight:700;color:#e05555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Red Alliance</div>
+        <input id="red1" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team 1" style="width:100%;background:var(--card2);border:1px solid rgba(224,85,85,.3);border-radius:8px;padding:9px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;margin-bottom:6px;text-align:center;" oninput="clearPrediction()">
+        <input id="red2" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team 2" style="width:100%;background:var(--card2);border:1px solid rgba(224,85,85,.3);border-radius:8px;padding:9px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;margin-bottom:6px;text-align:center;" oninput="clearPrediction()">
+        <input id="red3" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team 3" style="width:100%;background:var(--card2);border:1px solid rgba(224,85,85,.3);border-radius:8px;padding:9px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;text-align:center;" oninput="clearPrediction()">
+      </div>
+
+      <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.35);border-radius:var(--radius);padding:14px;">
+        <div style="font-size:12px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Blue Alliance</div>
+        <input id="blue1" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team 1" style="width:100%;background:var(--card2);border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:9px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;margin-bottom:6px;text-align:center;" oninput="clearPrediction()">
+        <input id="blue2" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team 2" style="width:100%;background:var(--card2);border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:9px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;margin-bottom:6px;text-align:center;" oninput="clearPrediction()">
+        <input id="blue3" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team 3" style="width:100%;background:var(--card2);border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:9px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;text-align:center;" oninput="clearPrediction()">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn" onclick="runPrediction()" style="flex:1;">Predict Winner</button>
+      <button onclick="clearAllTeams()" style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;">Clear</button>
+    </div>
+
+    <div id="predict-result" style="display:none;">
+      <div id="predict-banner" style="border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:12px;">
+        <div id="predict-winner-label" style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;opacity:.8;"></div>
+        <div id="predict-winner-name" style="font-size:28px;font-weight:800;"></div>
+        <div id="predict-confidence" style="font-size:13px;margin-top:6px;opacity:.75;"></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">Projected Scores</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;text-align:center;">
+            <div id="pred-red-score" style="font-size:32px;font-weight:800;color:#e05555;"></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">RED</div>
+          </div>
+          <div style="font-size:18px;color:var(--muted);font-weight:700;">vs</div>
+          <div style="flex:1;text-align:center;">
+            <div id="pred-blue-score" style="font-size:32px;font-weight:800;color:#60a5fa;"></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">BLUE</div>
+          </div>
+        </div>
+      </div>
+      <div id="predict-breakdown" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Team Breakdown</div>
+        <div id="predict-breakdown-content"></div>
+      </div>
+
+      <!-- Charts -->
+      <div id="predict-charts"></div>
+
+    </div>
+    <div id="predict-err" style="font-size:13px;color:var(--red);text-align:center;margin-top:8px;"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: IMPORT ══ -->
+<div id="page-import" class="page">
+  <div class="header"><h1>Import <span>Data</span></h1></div>
+  <div style="padding: 0 4px">
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('fileInput').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      <strong>Tap to import CSV</strong>
+      <p>Select one or multiple files — they'll be merged</p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" multiple onchange="handleFiles(event)">
+    <div id="loaded-files-list" class="loaded-files"></div>
+    <div id="import-status" style="margin-top:4px;"></div>
+    <button class="btn" id="export-all-btn" onclick="exportAllCSV()" style="display:none;margin-top:4px;">⬇ Export All as CSV</button>
+    <button class="btn secondary" id="clear-btn" onclick="clearAllData()" style="display:none;margin-top:4px;">Clear All Data</button>
+    <div style="margin-top:16px">
+      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Match Schedule</div>
+
+      <!-- Image drop zone -->
+      <div id="sched-img-zone" onclick="document.getElementById('sched-img-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="schedHandleDrop(event)" style="border:2px dashed var(--border);border-radius:var(--radius);padding:18px;text-align:center;cursor:pointer;margin-bottom:8px;transition:border-color .2s;">
+        <div style="font-size:22px;margin-bottom:4px;">📷</div>
+        <div style="font-size:13px;color:var(--muted);">Drop or tap to upload a schedule screenshot</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">You can also press Ctrl/Cmd+V to paste a screenshot</div>
+        <input id="sched-img-input" type="file" accept="image/*" style="display:none" onchange="schedHandleFile(this.files[0])">
+      </div>
+      <div id="sched-img-status" style="margin-bottom:6px;font-size:13px;"></div>
+
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">— or paste text directly —</div>
+      <textarea id="schedule-paste" placeholder="Paste schedule here — copy from FRC Events, The Blue Alliance, or any spreadsheet. Expects columns: Match, Red 1, Red 2, Red 3, Blue 1, Blue 2, Blue 3" style="width:100%;min-height:80px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:-apple-system,monospace;-webkit-appearance:none;line-height:1.5;" oninput="parseSchedulePaste()"></textarea>
+      <div id="schedule-status" style="margin-top:6px;font-size:13px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: AI ══ -->
+<div id="page-rotation" class="page">
+  <div class="header"><h1>Scout <span>Rotation</span></h1></div>
+  <div style="padding:0 4px">
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span class="card-label" style="margin:0">Scouts</span>
+        <button onclick="autoFillScouts()" style="font-size:12px;padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;-webkit-appearance:none;">Auto-fill from data</button>
+      </div>
+      <textarea id="rot-scouts" rows="5" placeholder="Enter scout names, one per line" style="width:100%;box-sizing:border-box;background:var(--input);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:13px;resize:vertical;font-family:inherit"></textarea>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-label">Block Size</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <input type="number" id="rot-block-size" value="6" min="1" max="99" style="width:64px;background:var(--input);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:15px;text-align:center;-webkit-appearance:none;">
+        <span style="color:var(--muted);font-size:13px">matches per block — scouts rotate positions after each block</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-label">Shift Limits <span style="font-weight:400;color:var(--muted);font-size:11px;text-transform:none;letter-spacing:0">— optional</span></div>
+      <p style="font-size:12px;color:var(--muted);margin:6px 0 8px 0">Cap how many blocks someone can be assigned. One per line.</p>
+      <textarea id="rot-limits" rows="3" placeholder="Name: max blocks&#10;e.g. Wally: 2&#10;Jonathan: 1" style="width:100%;box-sizing:border-box;background:var(--input);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:13px;resize:vertical;font-family:inherit"></textarea>
+    </div>
+
+    <button onclick="generateRotation()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:600;cursor:pointer;-webkit-appearance:none;margin-bottom:16px">Generate Rotation</button>
+
+    <div id="rotation-output"></div>
+
+  </div>
+</div>
+
+<!-- ══ TEAM DETAIL (overlay) ══ -->
+<div id="team-detail" style="display:none; padding: 0 12px 20px;">
+  <button class="back-btn" onclick="closeDetail()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Back
+  </button>
+  <div id="team-detail-content"></div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let rawData = [];
+let loadedFiles = {}; // { filename: { rows, text } }
+let teamStats = {};
+let currentSort = 'epa';
+let activePage = 'rankings';
+
+// ── CSV PARSE ──────────────────────────────────────────────────────────────
+function parseCSVLine(line) {
+  const fields = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+    else if (c === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  fields.push(cur.trim());
+  return fields;
+}
+function parseCSV(text) {
+  const lines = text.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const headers = parseCSVLine(lines[0]);
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = parseCSVLine(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+    return obj;
+  });
+}
+
+function n(v) { const x = parseFloat(v); return isNaN(x) ? 0 : x; }
+function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function pct(v) { return Math.round(v * 10) / 10; }
+
+// ── BUILD TEAM STATS ───────────────────────────────────────────────────────
+function buildTeamStats(rows) {
+  const teams = {};
+  rows.forEach(r => {
+    const t = r.robot_number;
+    if (!t) return;
+    if (!teams[t]) teams[t] = { rows: [], team: t };
+    teams[t].rows.push(r);
+  });
+
+  const stats = {};
+  Object.entries(teams).forEach(([team, d]) => {
+    const rs = d.rows;
+    const autoShots   = rs.map(r => n(r.auto_shots));
+    const teleShots   = rs.map(r => n(r.teleop_shots));
+    const totalShots  = rs.map((r,i) => autoShots[i] + teleShots[i]);
+    const passed      = rs.map(r => n(r.passed_shots));
+    const autoAcc     = rs.filter(r => n(r.auto_shots)>0).map(r => n(r.auto_accuracy));
+    const speed       = rs.filter(r => n(r.robot_speed)>0).map(r => n(r.robot_speed));
+    const agility     = rs.filter(r => n(r.robot_agility)>0).map(r => n(r.robot_agility));
+    const defense     = rs.filter(r => n(r.robot_defense)>0).map(r => n(r.robot_defense));
+    const accuracy    = rs.filter(r => n(r.robot_accuracy)>0).map(r => n(r.robot_accuracy));
+
+    // EPA = avg total shots weighted by accuracy
+    const epa = avg(totalShots) * (accuracy.length ? avg(accuracy) / 100 : 1);
+
+    // Abilities — most common non-"didnt" value
+    const abilityMode = (col) => {
+      const counts = {};
+      rs.forEach(r => { const v = (r[col]||'').toLowerCase(); if(v && v!=='didnt' && v!=='') counts[v]=(counts[v]||0)+1; });
+      const best = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+      return best ? best[0] : 'didnt';
+    };
+
+    // Incidents
+    const incSum = (col) => rs.reduce((acc,r)=>acc+n(r[col]),0);
+
+    stats[team] = {
+      team,
+      matches: rs.length,
+      avgAutoShots: pct(avg(autoShots)),
+      avgTeleShots: pct(avg(teleShots)),
+      avgTotalShots: pct(avg(totalShots)),
+      avgPassed: pct(avg(passed)),
+      autoAccuracy: autoAcc.length ? pct(avg(autoAcc)) : null,
+      avgSpeed: speed.length ? pct(avg(speed)) : 0,
+      avgAgility: agility.length ? pct(avg(agility)) : 0,
+      avgDefense: defense.length ? pct(avg(defense)) : 0,
+      avgAccuracy: accuracy.length ? pct(avg(accuracy)) : 0,
+      epa: pct(epa),
+      abilityBump: abilityMode('ability_bump'),
+      abilityTrench: abilityMode('ability_trench'),
+      abilityOutpost: abilityMode('ability_outpost'),
+      climbRate: rs.filter(r => n(r.endgame_climb_level) > 0).length / rs.length,
+      incLostComms: incSum('lost_comms'),
+      incStuck: incSum('game_piece_stuck'),
+      incDamagedOthers: incSum('damaged_others'),
+      incDamagedSelf: incSum('damaged_self'),
+      incFoul: incSum('foul'),
+      incTipped: incSum('tipped'),
+      rows: rs
+    };
+  });
+  return stats;
+}
+
+// ── LOAD DATA ──────────────────────────────────────────────────────────────
+function rebuildFromFiles() {
+  rawData = Object.values(loadedFiles).flatMap(f => f.rows);
+  teamStats = buildTeamStats(rawData);
+  const count = Object.keys(teamStats).length;
+  document.getElementById('team-count-badge').textContent = count + ' teams';
+  renderRankings();
+  renderTeamSearch();
+  renderCompare();
+  renderNotes();
+  buildChartSelectors();
+  renderLoadedFiles();
+  renderPicklist();
+  saveToCache();
+}
+
+function addFile(name, text) {
+  const rows = parseCSV(text);
+  // Tag each row with the source filename as _file_event so we don't rely
+  // on the internal event field (which can be mislabeled)
+  const fileEvent = name.replace('.csv','').replace('_scouting_data','');
+  rows.forEach(r => r._file_event = fileEvent);
+  loadedFiles[name] = { rows, text, count: rows.length };
+  rebuildFromFiles();
+}
+
+function removeFile(name) {
+  delete loadedFiles[name];
+  rebuildFromFiles();
+  if (Object.keys(loadedFiles).length === 0) {
+    showStatus('All files removed.', 'muted');
+  }
+}
+
+function clearAllData() {
+  loadedFiles = {};
+  rawData = [];
+  teamStats = {};
+  localStorage.removeItem('frc_files');
+  document.getElementById('team-count-badge').textContent = '0 teams';
+  renderRankings();
+  renderTeamSearch();
+  renderLoadedFiles();
+  showStatus('Data cleared.', 'muted');
+}
+
+function handleFiles(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      addFile(file.name, ev.target.result);
+      loaded++;
+      showStatus(`✅ Loaded ${loaded}/${files.length} file(s) — ${rawData.length} total rows`, 'green');
+    };
+    reader.readAsText(file);
+  });
+}
+
+function exportAllCSV() {
+  const files = Object.values(loadedFiles);
+  if (!files.length) return;
+  // Collect all unique headers across every file
+  const allHeaders = [];
+  const headerSet = new Set();
+  files.forEach(f => {
+    const firstLine = f.text.trim().split(/\r?\n/)[0];
+    parseCSVLine(firstLine).forEach(h => { if (!headerSet.has(h)) { headerSet.add(h); allHeaders.push(h); } });
+  });
+  // Build combined rows, quoting fields that contain commas/quotes/newlines
+  function csvField(val) {
+    const s = val == null ? '' : String(val);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+  }
+  const lines = [allHeaders.join(',')];
+  rawData.forEach(r => {
+    lines.push(allHeaders.map(h => csvField(r[h])).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'frc_all_data.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderLoadedFiles() {
+  const list = document.getElementById('loaded-files-list');
+  const clearBtn = document.getElementById('clear-btn');
+  const exportBtn = document.getElementById('export-all-btn');
+  const files = Object.entries(loadedFiles);
+  if (!files.length) { list.innerHTML = ''; clearBtn.style.display = 'none'; exportBtn.style.display = 'none'; return; }
+  clearBtn.style.display = 'block';
+  exportBtn.style.display = 'block';
+  list.innerHTML = files.map(([name, f]) => `
+    <div class="loaded-file">
+      <div class="loaded-file-info">
+        <span class="loaded-file-name">${name}</span>
+        <span class="loaded-file-meta">${f.count} rows</span>
+      </div>
+      <button class="remove-btn" onclick="removeFile('${name.replace(/'/g,"\\'")}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function saveToCache() {
+  try {
+    const data = Object.fromEntries(Object.entries(loadedFiles).map(([k,v]) => [k, { text: v.text, count: v.count }]));
+    localStorage.setItem('frc_files', JSON.stringify(data));
+  } catch(e) {}
+}
+
+function loadFromCache() {
+  try {
+    const cached = localStorage.getItem('frc_files');
+    if (!cached) {
+      // fallback to old single-file cache
+      const old = localStorage.getItem('frc_csv');
+      if (old) { addFile('cached_data.csv', old); }
+      return;
+    }
+    const data = JSON.parse(cached);
+    Object.entries(data).forEach(([name, f]) => {
+      const rows = parseCSV(f.text);
+      const fileEvent = name.replace('.csv','').replace('_scouting_data','');
+      rows.forEach(r => r._file_event = fileEvent);
+      loadedFiles[name] = { rows, text: f.text, count: f.count };
+    });
+    rebuildFromFiles();
+  } catch(e) {}
+}
+
+function showStatus(msg, color) {
+  const el = document.getElementById('import-status');
+  el.innerHTML = `<p style="color:var(--${color || 'text'}); font-size:14px;">${msg}</p>`;
+}
+
+// ── RENDER RANKINGS ────────────────────────────────────────────────────────
+function setSort(key) {
+  currentSort = key;
+  document.querySelectorAll('.sort-chip').forEach(c => c.classList.remove('active'));
+  event.target.classList.add('active');
+  renderRankings();
+}
+
+function sortKey(s) {
+  const map = { epa:'epa', passing:'avgPassed', totalShots:'avgTotalShots', autoShots:'avgAutoShots', speed:'avgSpeed', accuracy:'avgAccuracy', defense:'avgDefense' };
+  return map[s] || 'epa';
+}
+
+function epaClass(epa) {
+  if (epa >= 60) return 'epa-high';
+  if (epa >= 30) return 'epa-mid';
+  return 'epa-low';
+}
+
+function renderRankings() {
+  const list = document.getElementById('rankings-list');
+  if (!Object.keys(teamStats).length) {
+    list.innerHTML = `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><p>Import a CSV to see rankings</p></div>`;
+    return;
+  }
+  const sorted = Object.values(teamStats).sort((a,b) => b[sortKey(currentSort)] - a[sortKey(currentSort)]);
+  list.innerHTML = sorted.map((s, i) => `
+    <div class="team-card" onclick="showDetail('${s.team}')">
+      <div class="team-card-top">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="rank-num">#${i+1}</span>
+          <span class="team-num">${s.team}</span>
+          <span style="cursor:pointer;font-size:13px;" onclick="event.stopPropagation();cycleFlag('${s.team}');renderRankings();" title="Click to flag team">${flagEmoji(s.team) || '·'}</span>
+        </div>
+        <span class="epa-badge ${epaClass(s.epa)}">EPA ${s.epa}</span>
+      </div>
+      <div class="team-stats" style="grid-template-columns:repeat(6,1fr)">
+        <div class="stat"><div class="stat-val">${s.avgTotalShots}</div><div class="stat-lbl">Shots/Match</div></div>
+        <div class="stat"><div class="stat-val color-accent">${s.avgAutoShots}</div><div class="stat-lbl">Auto</div></div>
+        <div class="stat"><div class="stat-val">${s.avgPassed > 0 ? s.avgPassed : '—'}</div><div class="stat-lbl">Passing</div></div>
+        <div class="stat"><div class="stat-val">${speedBar(s.avgSpeed)}</div><div class="stat-lbl">Speed ${s.avgSpeed}</div></div>
+        <div class="stat"><div class="stat-val">${s.avgAccuracy > 0 ? s.avgAccuracy+'%' : '—'}</div><div class="stat-lbl">Accuracy</div></div>
+        <div class="stat"><div class="stat-val">${s.avgDefense > 0 ? speedBar(s.avgDefense) : '—'}</div><div class="stat-lbl">Def ${s.avgDefense > 0 ? s.avgDefense : ''}</div></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function speedBar(v) {
+  const filled = Math.round(v);
+  return '●'.repeat(filled) + '○'.repeat(Math.max(0, 5-filled));
+}
+
+// ── TEAM SEARCH ────────────────────────────────────────────────────────────
+function renderTeamSearch() {
+  const q = document.getElementById('team-search').value.trim();
+  const results = document.getElementById('team-search-results');
+  const all = Object.values(teamStats).sort((a,b)=>n(a.team)-n(b.team));
+  const filtered = q ? all.filter(s => s.team.includes(q)) : all;
+  if (!filtered.length && !Object.keys(teamStats).length) {
+    results.innerHTML = `<div class="empty"><p>Import a CSV first</p></div>`;
+    return;
+  }
+  if (!filtered.length) {
+    results.innerHTML = `<div class="empty"><p>No team found</p></div>`;
+    return;
+  }
+  results.innerHTML = `<div class="team-list">${filtered.map(s => `
+    <div class="team-card" onclick="showDetail('${s.team}')">
+      <div class="team-card-top">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="team-num">${s.team}</span>
+          <span style="cursor:pointer;font-size:13px;" onclick="event.stopPropagation();cycleFlag('${s.team}');renderTeamSearch();" title="Click to flag team">${flagEmoji(s.team) || '·'}</span>
+        </div>
+        <span class="epa-badge ${epaClass(s.epa)}">EPA ${s.epa}</span>
+      </div>
+      <div class="team-stats" style="grid-template-columns:repeat(5,1fr)">
+        <div class="stat"><div class="stat-val">${s.avgTotalShots}</div><div class="stat-lbl">Avg Shots</div></div>
+        <div class="stat"><div class="stat-val color-accent">${s.avgAutoShots}</div><div class="stat-lbl">Auto</div></div>
+        <div class="stat"><div class="stat-val">${speedBar(s.avgSpeed)}</div><div class="stat-lbl">Speed ${s.avgSpeed}</div></div>
+        <div class="stat"><div class="stat-val">${s.avgAccuracy > 0 ? s.avgAccuracy+'%' : '—'}</div><div class="stat-lbl">Accuracy</div></div>
+        <div class="stat"><div class="stat-val">${s.avgDefense > 0 ? speedBar(s.avgDefense) : '—'}</div><div class="stat-lbl">Def ${s.avgDefense > 0 ? s.avgDefense : ''}</div></div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+// ── TEAM DETAIL ────────────────────────────────────────────────────────────
+function showDetail(team) {
+  const s = teamStats[team];
+  if (!s) return;
+
+  const incidents = [];
+  if (s.incLostComms)     incidents.push(`${s.incLostComms}× comms loss`);
+  if (s.incStuck)         incidents.push(`${s.incStuck}× piece stuck`);
+  if (s.incDamagedOthers) incidents.push(`${s.incDamagedOthers}× damaged others`);
+  if (s.incDamagedSelf)   incidents.push(`${s.incDamagedSelf}× damaged self`);
+  if (s.incFoul)          incidents.push(`${s.incFoul}× foul`);
+  if (s.incTipped)        incidents.push(`${s.incTipped}× tipped`);
+
+  const matchRows = [...s.rows].sort((a,b)=>n(a.match_number)-n(b.match_number));
+
+  const flagSection = `<div id="flag-section-${team}" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin:8px 0;">${buildFlagSection(team)}</div>`;
+
+  document.getElementById('team-detail-content').innerHTML = `
+    <div class="detail-hero">
+      <div class="detail-team-num">Team ${s.team}</div>
+      <div class="detail-matches">${s.matches} matches scouted · EPA ${s.epa}</div>
+    </div>
+    ${flagSection}
+
+    <div class="section-title">Scoring</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-card-val">${s.avgTotalShots}</div><div class="stat-card-lbl">Avg Total Shots</div></div>
+      <div class="stat-card"><div class="stat-card-val color-accent">${s.avgAutoShots}</div><div class="stat-card-lbl">Avg Auto Shots</div></div>
+      <div class="stat-card"><div class="stat-card-val">${s.avgTeleShots}</div><div class="stat-card-lbl">Avg Teleop Shots</div></div>
+      <div class="stat-card"><div class="stat-card-val">${s.autoAccuracy !== null ? s.autoAccuracy+'%' : '—'}</div><div class="stat-card-lbl">Auto Accuracy</div></div>
+      <div class="stat-card"><div class="stat-card-val">${s.avgAccuracy > 0 ? s.avgAccuracy+'%' : '—'}</div><div class="stat-card-lbl">Robot Accuracy</div></div>
+      <div class="stat-card"><div class="stat-card-val">${s.avgAccuracy > 0 ? s.avgAccuracy+'%' : '—'}</div><div class="stat-card-lbl">Avg Accuracy</div></div>
+    </div>
+
+    <div class="section-title">Attributes</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-card-val">${s.avgSpeed || '—'}</div><div class="stat-card-lbl">Avg Speed</div></div>
+      <div class="stat-card"><div class="stat-card-val">${s.avgAgility || '—'}</div><div class="stat-card-lbl">Avg Agility</div></div>
+      <div class="stat-card"><div class="stat-card-val" style="font-size:14px">${s.avgDefense > 0 ? speedBar(s.avgDefense) : '—'}</div><div class="stat-card-lbl">Defense ${s.avgDefense > 0 ? s.avgDefense : ''}</div></div>
+    </div>
+
+    <div class="section-title">Abilities</div>
+    <div class="ability-row">
+      <span class="ability-chip ${s.abilityBump !== 'didnt' ? 'chip-yes' : 'chip-no'}">Bump: ${s.abilityBump}</span>
+      <span class="ability-chip ${s.abilityTrench !== 'didnt' ? 'chip-yes' : 'chip-no'}">Trench: ${s.abilityTrench}</span>
+      <span class="ability-chip ${s.abilityOutpost !== 'didnt' ? 'chip-yes' : 'chip-no'}">Outpost: ${s.abilityOutpost}</span>
+    </div>
+
+    ${incidents.length ? `
+    <div class="section-title">Incidents</div>
+    <div class="incident-row">${incidents.map(i=>`<span class="incident-chip">${i}</span>`).join('')}</div>` : ''}
+
+    <div class="section-title">Match Log</div>
+    ${matchRows.map(r => `
+      <div class="match-row">
+        <span class="match-num">Q${r.match_number}</span>
+        <span class="match-alliance alliance-${(r.alliance||'').toLowerCase() === 'red' ? 'red' : 'blue'}">${r.alliance||'?'}</span>
+        <div class="match-details">
+          <div class="match-detail-item"><span class="match-detail-val">${n(r.auto_shots)+n(r.teleop_shots)}</span><span class="match-detail-lbl">shots</span></div>
+          <div class="match-detail-item"><span class="match-detail-val color-accent">${n(r.auto_shots)}</span><span class="match-detail-lbl">auto</span></div>
+          <div class="match-detail-item"><span class="match-detail-val">${n(r.robot_accuracy)>0?n(r.robot_accuracy)+'%':'—'}</span><span class="match-detail-lbl">acc</span></div>
+          <div class="match-detail-item"><span class="match-detail-val">${n(r.robot_speed)||'—'}</span><span class="match-detail-lbl">spd</span></div>
+        </div>
+        <span class="tag">${r.username ? r.username.split(' ')[0] : ''}</span>
+      </div>
+    `).join('')}
+  `;
+
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  document.getElementById('team-detail').style.display = 'block';
+}
+
+function closeDetail() {
+  document.getElementById('team-detail').style.display = 'none';
+  showPage(activePage, true);
+}
+
+// ── COMPARE ────────────────────────────────────────────────────────────────
+function renderCompare() {
+  const a = document.getElementById('compare-a').value.trim();
+  const b = document.getElementById('compare-b').value.trim();
+  const el = document.getElementById('compare-results');
+  if (!a || !b) { el.innerHTML = ''; return; }
+  const sa = teamStats[a], sb = teamStats[b];
+  if (!sa || !sb) {
+    el.innerHTML = `<p style="color:var(--muted);font-size:14px;margin-top:12px;">Team not found in data.</p>`;
+    return;
+  }
+
+  const metrics = [
+    { key: 'epa',          label: 'EPA' },
+    { key: 'avgTotalShots', label: 'Avg Total Shots' },
+    { key: 'avgAutoShots',  label: 'Avg Auto Shots' },
+    { key: 'avgTeleShots',  label: 'Avg Teleop Shots' },
+    { key: 'avgAccuracy',   label: 'Avg Accuracy (%)' },
+    { key: 'avgSpeed',      label: 'Avg Speed' },
+    { key: 'avgAgility',    label: 'Avg Agility' },
+    { key: 'avgDefense',    label: 'Avg Defense' },
+  ];
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;margin-bottom:12px;padding:0 4px">
+      <div style="font-size:20px;font-weight:800;text-align:center;color:var(--accent)">${a}</div>
+      <div style="font-size:13px;color:var(--muted);font-weight:600;align-self:center">vs</div>
+      <div style="font-size:20px;font-weight:800;text-align:center;color:var(--accent2)">${b}</div>
+    </div>
+    <div class="compare-grid">
+      ${metrics.map(m => {
+        const va = sa[m.key], vb = sb[m.key];
+        const aWins = va > vb, tie = va === vb;
+        const lblColor = aWins ? 'var(--accent)' : tie ? 'var(--muted)' : 'var(--accent2)';
+        return `
+          <div class="compare-row">
+            <div class="compare-val ${aWins ? 'compare-winner' : tie ? '' : 'compare-loser'}">${va}</div>
+            <div class="compare-lbl" style="color:${lblColor}">${m.label}</div>
+            <div class="compare-val ${!aWins && !tie ? 'compare-winner' : tie ? '' : 'compare-loser'}">${vb}</div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ── CHARTS ─────────────────────────────────────────────────────────────────
+let chartTeams  = [];
+let chartMetric = null;
+let chartType   = 'bar';
+let chartCat    = 'Scoring';
+let chartInstance = null;
+
+const TEAM_COLORS = [
+  { fill: 'rgba(240,165,0,0.7)',   border: '#f0a500', text: '#f0a500'  },
+  { fill: 'rgba(224,85,85,0.7)',   border: '#e05555', text: '#e05555'  },
+  { fill: 'rgba(76,175,125,0.7)',  border: '#4caf7d', text: '#4caf7d'  },
+  { fill: 'rgba(167,139,250,0.7)', border: '#a78bfa', text: '#a78bfa'  },
+  { fill: 'rgba(56,189,248,0.7)',  border: '#38bdf8', text: '#38bdf8'  },
+  { fill: 'rgba(251,146,60,0.7)',  border: '#fb923c', text: '#fb923c'  },
+  { fill: 'rgba(244,114,182,0.7)', border: '#f472b6', text: '#f472b6'  },
+  { fill: 'rgba(52,211,153,0.7)',  border: '#34d399', text: '#34d399'  },
+  { fill: 'rgba(232,121,249,0.7)', border: '#e879f9', text: '#e879f9'  },
+  { fill: 'rgba(125,211,252,0.7)', border: '#7dd3fc', text: '#7dd3fc'  },
+];
+
+const CHART_METRICS = [
+  // Scoring
+  { key: 'totalShots',   label: 'Total Shots',   cat: 'Scoring',  extract: r => n(r.auto_shots)+n(r.teleop_shots) },
+  { key: 'teleopShots',  label: 'Teleop Shots',  cat: 'Scoring',  extract: r => n(r.teleop_shots) },
+  { key: 'passedShots',  label: 'Passed Shots',  cat: 'Scoring',  extract: r => n(r.passed_shots) },
+  // Accuracy
+  { key: 'robotAcc',     label: 'Robot Acc %',   cat: 'Accuracy', extract: r => n(r.robot_accuracy), yMin: 0, yMax: 100 },
+  { key: 'autoAcc',      label: 'Auto Acc %',    cat: 'Accuracy', extract: r => n(r.auto_accuracy),  yMin: 0, yMax: 100 },
+  // Auto
+  { key: 'autoShots',    label: 'Auto Shots',    cat: 'Auto',     extract: r => n(r.auto_shots) },
+  { key: 'autoAccAuto',  label: 'Auto Acc %',    cat: 'Auto',     extract: r => n(r.auto_accuracy),  yMin: 0, yMax: 100 },
+  { key: 'autoDuration', label: 'Auto Active (s)',cat:'Auto',      extract: r => pct(n(r.auto_duration_ms)/1000) },
+];
+
+// ── team selector ──
+function filterChartTeams() {
+  const q = document.getElementById('chart-team-input').value.trim();
+  const dropdown = document.getElementById('chart-team-dropdown');
+  if (!q) { dropdown.innerHTML = ''; return; }
+  const available = Object.keys(teamStats).filter(t => !chartTeams.includes(t) && t.startsWith(q)).sort((a,b)=>n(a)-n(b));
+  if (!available.length) { dropdown.innerHTML = ''; return; }
+  dropdown.innerHTML = available.slice(0,6).map(t => {
+    const s = teamStats[t];
+    return `<div class="chart-dropdown-item" onclick="addChartTeam('${t}')">
+      <span>${t}</span><span class="item-meta">EPA ${s.epa} · ${s.matches} matches</span>
+    </div>`;
+  }).join('');
+}
+
+function addChartTeam(team) {
+  if (chartTeams.includes(team)) return;
+  chartTeams.push(team);
+  document.getElementById('chart-team-input').value = '';
+  document.getElementById('chart-team-dropdown').innerHTML = '';
+  renderChartTeamPills();
+  renderChart();
+}
+
+function removeChartTeam(team) {
+  chartTeams = chartTeams.filter(t => t !== team);
+  renderChartTeamPills();
+  renderChart();
+}
+
+function renderChartTeamPills() {
+  const el = document.getElementById('chart-teams-selected');
+  el.innerHTML = chartTeams.map((t, i) => `
+    <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid ${TEAM_COLORS[i].border};border-radius:20px;padding:5px 10px;">
+      <span style="font-size:13px;font-weight:700;color:${TEAM_COLORS[i].text}">Team ${t}</span>
+      <button onclick="removeChartTeam('${t}')" style="background:none;border:none;color:${TEAM_COLORS[i].text};cursor:pointer;font-size:14px;line-height:1;padding:0">✕</button>
+    </div>`).join('');
+}
+
+// ── chart type ──
+function setChartType(type) {
+  chartType = type;
+  ['bar','line','dot'].forEach(t => document.getElementById('ctype-'+t)?.classList.toggle('active', t===type));
+  renderChart();
+}
+
+// ── category ──
+function setChartCat(cat) {
+  chartCat = cat;
+  chartMetric = null;
+  ['Scoring','Accuracy','Auto'].forEach(c => document.getElementById('cat-'+c)?.classList.toggle('active', c===cat));
+  buildMetricBar();
+  renderChart();
+}
+
+function buildMetricBar() {
+  const bar = document.getElementById('chart-metric-bar');
+  if (!bar) return;
+  const metrics = CHART_METRICS.filter(m => m.cat === chartCat);
+  bar.innerHTML = metrics.map(m => `
+    <div class="selector-chip ${chartMetric===m.key?'active':''}" onclick="selectChartMetric('${m.key}')">${m.label}</div>
+  `).join('');
+}
+
+function selectChartMetric(key) {
+  chartMetric = key;
+  buildMetricBar();
+  renderChart();
+}
+
+function buildChartSelectors() {
+  buildMetricBar();
+  renderChartTeamPills();
+  buildOEMetricBar();
+  buildCmpMetricBar();
+  buildOvMetricsGrid();
+}
+
+// ── render ──
+function renderChart() {
+  const empty  = document.getElementById('chart-empty');
+  const canvas = document.getElementById('main-chart');
+  if (!chartTeams.length || !chartMetric) {
+    empty.style.display = 'block'; canvas.style.display = 'none'; return;
+  }
+  const metric  = CHART_METRICS.find(m => m.key === chartMetric);
+  if (!metric) return;
+  const showAvg = document.getElementById('show-avg')?.checked;
+
+  empty.style.display = 'none'; canvas.style.display = 'block';
+  if (chartInstance) chartInstance.destroy();
+
+  // Bar: X = teams, Y = average — clear side-by-side comparison
+  if (chartType === 'bar') {
+    const labels   = chartTeams.map(t => 'T'+t);
+    const values   = chartTeams.map(t => {
+      const rows = rawData.filter(r => r.robot_number === t);
+      return pct(avg(rows.map(r => metric.extract(r))));
+    });
+    const datasets = [{
+      label: metric.label,
+      data: values,
+      backgroundColor: chartTeams.map((_,i) => TEAM_COLORS[i].fill),
+      borderColor:     chartTeams.map((_,i) => TEAM_COLORS[i].border),
+      borderWidth: 2, borderRadius: 6,
+    }];
+    chartInstance = new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: chartOptions(metric, false)
+    });
+    return;
+  }
+
+  // Line / Dot: scatter mode — each point has its own X (match number)
+  // This way teams with different match schedules plot cleanly on the same axis
+  const allMatchNums = [...new Set(
+    chartTeams.flatMap(t => rawData.filter(r => r.robot_number === t).map(r => n(r.match_number)))
+  )].sort((a,b) => a-b);
+
+  const datasets = chartTeams.map((t, i) => {
+    const c = TEAM_COLORS[i];
+    const teamRows = rawData
+      .filter(r => r.robot_number === t)
+      .sort((a,b) => n(a.match_number) - n(b.match_number));
+    const data = teamRows.map(r => ({ x: n(r.match_number), y: metric.extract(r) }));
+    return {
+      label: 'Team '+t, data,
+      borderColor: c.border, backgroundColor: c.fill,
+      pointBackgroundColor: c.border,
+      pointRadius: chartType === 'dot' ? 6 : 4,
+      pointHoverRadius: 9,
+      borderWidth: chartType === 'dot' ? 0 : 2,
+      showLine: chartType !== 'dot',
+      tension: 0,
+    };
+  });
+
+  // Avg lines
+  if (showAvg) {
+    const xMin = allMatchNums[0];
+    const xMax = allMatchNums[allMatchNums.length - 1];
+    chartTeams.forEach((t, i) => {
+      const c = TEAM_COLORS[i];
+      const teamRows = rawData.filter(r => r.robot_number === t);
+      const avgVal = pct(avg(teamRows.map(r => metric.extract(r))));
+      datasets.push({
+        label: 'T'+t+' avg',
+        data: [{ x: xMin, y: avgVal }, { x: xMax, y: avgVal }],
+        borderColor: c.border, borderWidth: 1.5,
+        borderDash: [6,4], pointRadius: 0, showLine: true,
+        backgroundColor: 'transparent',
+      });
+    });
+  }
+
+  chartInstance = new Chart(canvas, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      ...chartOptions(metric, chartTeams.length > 1),
+      scales: {
+        x: {
+          type: 'linear',
+          ticks: {
+            color: '#888888', font: { size: 11 },
+            callback: v => 'Q'+v,
+            stepSize: 1,
+          },
+          grid: { color: '#2e2e2e' },
+        },
+        y: {
+          ticks: { color: '#888888', font: { size: 11 } },
+          grid: { color: '#2e2e2e' },
+          min: metric.yMin ?? undefined,
+          max: metric.yMax ?? undefined,
+        }
+      }
+    }
+  });
+}
+
+function chartOptions(metric, showLegend) {
+  return {
+    responsive: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        display: showLegend,
+        labels: { color: '#aaa', font: { size: 11 }, boxWidth: 12, padding: 10 }
+      },
+      tooltip: { backgroundColor:'#1c1c1c', titleColor:'#f0f0f0', bodyColor:'#888888', borderColor:'#2e2e2e', borderWidth:1 }
+    },
+    scales: {
+      x: { ticks: { color:'#888', font:{ size:11 } }, grid: { color:'#2e2e2e' } },
+      y: {
+        ticks: { color:'#888', font:{ size:11 } }, grid: { color:'#2e2e2e' },
+        min: 0, max: metric.yMax ?? undefined,
+      }
+    }
+  };
+}
+
+// ── CHART MODE ─────────────────────────────────────────────────────────────
+let chartMode = 'perMatch';
+
+function setChartMode(mode) {
+  chartMode = mode;
+  ['perMatch','overEvents','compare','overlay'].forEach(m => {
+    document.getElementById('chart-mode-'+m).style.display = m === mode ? 'block' : 'none';
+    document.getElementById('mode-'+m)?.classList.toggle('active', m === mode);
+  });
+  if (mode === 'overlay') buildOvMetricsGrid();
+}
+
+// ── OVER EVENTS ────────────────────────────────────────────────────────────
+let oeTeam = null;
+let oeMetric = null;
+let oeChartInstance = null;
+
+function filterOETeam() {
+  const q = document.getElementById('oe-team-input').value.trim();
+  const dd = document.getElementById('oe-team-dropdown');
+  if (!q) { dd.innerHTML = ''; return; }
+  const teams = Object.keys(teamStats).filter(t => t.startsWith(q)).sort((a,b)=>n(a)-n(b));
+  dd.innerHTML = teams.slice(0,6).map(t => {
+    const s = teamStats[t];
+    return `<div class="chart-dropdown-item" onclick="selectOETeam('${t}')">
+      <span>${t}</span><span class="item-meta">EPA ${s.epa} · ${s.matches} matches</span>
+    </div>`;
+  }).join('');
+}
+
+function selectOETeam(team) {
+  oeTeam = team;
+  document.getElementById('oe-team-input').value = '';
+  document.getElementById('oe-team-dropdown').innerHTML = '';
+  document.getElementById('oe-team-selected').textContent = 'Team ' + team;
+  buildOEMetricBar();
+  renderOEChart();
+}
+
+function buildOEMetricBar() {
+  const bar = document.getElementById('oe-metric-bar');
+  bar.innerHTML = CHART_METRICS.map(m => `
+    <div class="selector-chip ${oeMetric===m.key?'active':''}" onclick="selectOEMetric('${m.key}')">${m.label}</div>
+  `).join('');
+}
+
+function selectOEMetric(key) {
+  oeMetric = key;
+  buildOEMetricBar();
+  renderOEChart();
+}
+
+function renderOEChart() {
+  const empty  = document.getElementById('oe-empty');
+  const canvas = document.getElementById('oe-chart');
+  if (!oeTeam || !oeMetric) { empty.style.display='block'; canvas.style.display='none'; return; }
+
+  const metric = CHART_METRICS.find(m => m.key === oeMetric);
+  const teamRows = rawData.filter(r => r.robot_number === oeTeam);
+
+  // Use _file_event if available, fall back to event field (handles old cached data)
+  const getEvent = r => r._file_event || r.event || 'unknown';
+
+  // All known events sorted by competition order
+  const EVENT_ORDER = ['2026vagle', '2026vabla', '2026chcmp'];
+  const allKnownEvents = [...new Set(rawData.map(getEvent).filter(e => e !== 'unknown'))].sort((a,b) => {
+    const ai = EVENT_ORDER.indexOf(a), bi = EVENT_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1; if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  // Group team rows by event
+  const byEvent = {};
+  teamRows.forEach(r => {
+    const ev = getEvent(r);
+    if (!byEvent[ev]) byEvent[ev] = [];
+    byEvent[ev].push(r);
+  });
+
+  // Use ALL known events as X axis — null where team has no data
+  const labels = allKnownEvents;
+  const values = allKnownEvents.map(ev =>
+    byEvent[ev] ? pct(avg(byEvent[ev].map(r => metric.extract(r)))) : null
+  );
+
+  empty.style.display='none'; canvas.style.display='block';
+  if (oeChartInstance) oeChartInstance.destroy();
+
+  oeChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: metric.label,
+        data: values,
+        borderColor: '#f0a500',
+        backgroundColor: 'rgba(240,165,0,0.1)',
+        pointBackgroundColor: values.map(v => v === null ? 'transparent' : '#f0a500'),
+        pointRadius: values.map(v => v === null ? 0 : 7),
+        pointHoverRadius: 10,
+        borderWidth: 2, tension: 0,
+        spanGaps: false,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor:'#1c1c1c', titleColor:'#f0f0f0', bodyColor:'#888888', borderColor:'#2e2e2e', borderWidth:1 }
+      },
+      scales: {
+        x: { ticks: { color:'#888888', font:{size:11} }, grid:{ color:'#2e2e2e' } },
+        y: {
+          ticks: { color:'#888888', font:{size:11} }, grid:{ color:'#2e2e2e' },
+          min: 0, max: metric.yMax ?? undefined,
+        }
+      }
+    }
+  });
+}
+
+// ── COMPARE MODE ───────────────────────────────────────────────────────────
+let cmpMetric  = null;
+let cmpSort    = 'desc';
+let cmpTeams   = [];
+let cmpChartInstance = null;
+
+function setCmpSort(s) {
+  cmpSort = s;
+  ['desc','asc','team'].forEach(v => document.getElementById('cmp-sort-'+v)?.classList.toggle('active', v===s));
+  renderCmpChart();
+}
+
+function filterCmpTeams() {
+  const q = document.getElementById('cmp-team-input').value.trim();
+  const dd = document.getElementById('cmp-team-dropdown');
+  if (!q) { dd.innerHTML=''; return; }
+  const teams = Object.keys(teamStats).filter(t => !cmpTeams.includes(t) && t.startsWith(q)).sort((a,b)=>n(a)-n(b));
+  dd.innerHTML = teams.slice(0,6).map(t =>
+    `<div class="chart-dropdown-item" onclick="addCmpTeam('${t}')"><span>${t}</span><span class="item-meta">EPA ${teamStats[t].epa}</span></div>`
+  ).join('');
+}
+
+function addCmpTeam(team) {
+  if (cmpTeams.includes(team)) return;
+  cmpTeams.push(team);
+  document.getElementById('cmp-team-input').value = '';
+  document.getElementById('cmp-team-dropdown').innerHTML = '';
+  renderCmpPills();
+  renderCmpChart();
+}
+
+function removeCmpTeam(team) {
+  cmpTeams = cmpTeams.filter(t=>t!==team);
+  renderCmpPills();
+  renderCmpChart();
+}
+
+function renderCmpPills() {
+  document.getElementById('cmp-teams-selected').innerHTML = cmpTeams.map((t,i) => `
+    <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid ${TEAM_COLORS[i%10].border};border-radius:20px;padding:5px 10px;">
+      <span style="font-size:13px;font-weight:700;color:${TEAM_COLORS[i%10].text}">Team ${t}</span>
+      <button onclick="removeCmpTeam('${t}')" style="background:none;border:none;color:${TEAM_COLORS[i%10].text};cursor:pointer;font-size:14px;line-height:1;padding:0">✕</button>
+    </div>`).join('');
+}
+
+function buildCmpMetricBar() {
+  const bar = document.getElementById('cmp-metric-bar');
+  if (!bar) return;
+  bar.innerHTML = CHART_METRICS.map(m => `
+    <div class="selector-chip ${cmpMetric===m.key?'active':''}" onclick="selectCmpMetric('${m.key}')">${m.label}</div>
+  `).join('');
+}
+
+function selectCmpMetric(key) {
+  cmpMetric = key;
+  buildCmpMetricBar();
+  renderCmpChart();
+}
+
+function renderCmpChart() {
+  const empty  = document.getElementById('cmp-empty');
+  const canvas = document.getElementById('cmp-chart');
+  if (!cmpMetric) { empty.style.display='block'; canvas.style.display='none'; return; }
+
+  const metric = CHART_METRICS.find(m => m.key === cmpMetric);
+  const teams = cmpTeams;
+  if (!teams.length) { empty.style.display='block'; canvas.style.display='none'; return; }
+
+  // Build team → avg value
+  let data = teams.map(t => ({
+    team: t,
+    value: pct(avg(rawData.filter(r => r.robot_number === t).map(r => metric.extract(r))))
+  }));
+
+  // Sort
+  if (cmpSort === 'desc') data.sort((a,b) => b.value - a.value);
+  else if (cmpSort === 'asc') data.sort((a,b) => a.value - b.value);
+  else data.sort((a,b) => n(a.team) - n(b.team));
+
+  empty.style.display='none'; canvas.style.display='block';
+  if (cmpChartInstance) cmpChartInstance.destroy();
+
+  cmpChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => 'T'+d.team),
+      datasets: [{
+        label: metric.label,
+        data: data.map(d => d.value),
+        backgroundColor: data.map((_,i) => TEAM_COLORS[i % TEAM_COLORS.length].fill),
+        borderColor:     data.map((_,i) => TEAM_COLORS[i % TEAM_COLORS.length].border),
+        borderWidth: 2, borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#1c1c1c', titleColor:'#f0f0f0', bodyColor:'#888888', borderColor:'#2e2e2e', borderWidth:1,
+          callbacks: { title: items => 'Team ' + data[items[0].dataIndex].team }
+        }
+      },
+      scales: {
+        x: { ticks: { color:'#888888', font:{size:11} }, grid:{ color:'#2e2e2e' } },
+        y: {
+          ticks: { color:'#888888', font:{size:11} }, grid:{ color:'#2e2e2e' },
+          min: 0, max: metric.yMax ?? undefined,
+        }
+      }
+    }
+  });
+}
+
+// ── OVERLAY MODE ────────────────────────────────────────────────────────────
+let ovTeams = [];
+let ovMetrics = new Set();
+let ovX = 'teams';
+let ovType = 'bar';
+let ovChartInstances = [];
+
+const OV_ALL_METRICS = [
+  { key: 'totalShots',   label: 'Total Shots',    extract: r => n(r.auto_shots)+n(r.teleop_shots) },
+  { key: 'teleopShots',  label: 'Teleop Shots',   extract: r => n(r.teleop_shots) },
+  { key: 'autoShots',    label: 'Auto Shots',     extract: r => n(r.auto_shots) },
+  { key: 'passedShots',  label: 'Passed Shots',   extract: r => n(r.passed_shots) },
+  { key: 'robotAcc',     label: 'Robot Acc %',    extract: r => n(r.robot_accuracy),   skipZero: true },
+  { key: 'autoAcc',      label: 'Auto Acc %',     extract: r => n(r.auto_accuracy),    skipZero: true },
+  { key: 'robotSpeed',   label: 'Speed (1–5)',    extract: r => n(r.robot_speed),      skipZero: true },
+  { key: 'robotAgility', label: 'Agility (1–5)',  extract: r => n(r.robot_agility),    skipZero: true },
+  { key: 'robotDefense', label: 'Defense (1–5)',  extract: r => n(r.robot_defense),    skipZero: true },
+  { key: 'climbLevel',   label: 'Climb Level',    extract: r => n(r.endgame_climb_level), skipZero: true },
+];
+
+const OV_PALETTE = [
+  '#e8a020','#3b82f6','#e05555','#22c55e','#c084fc','#f97316',
+  '#06b6d4','#ec4899','#84cc16','#f59e0b','#6366f1','#14b8a6',
+  '#ef4444','#8b5cf6','#10b981','#f43f5e',
+];
+
+function buildOvMetricsGrid() {
+  const grid = document.getElementById('ov-metrics-grid');
+  if (!grid) return;
+  grid.innerHTML = OV_ALL_METRICS.map(m => {
+    const on = ovMetrics.has(m.key);
+    return `<label style="display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid ${on?'var(--accent)':'var(--border)'};border-radius:8px;padding:8px 10px;cursor:pointer;font-size:13px;transition:border-color .15s;">
+      <input type="checkbox" ${on?'checked':''} onchange="toggleOvMetric('${m.key}',this.checked)" style="accent-color:var(--accent);flex-shrink:0">
+      <span style="color:${on?'var(--text)':'var(--muted)'};">${m.label}</span>
+    </label>`;
+  }).join('');
+}
+
+function toggleOvMetric(key, checked) {
+  if (checked) ovMetrics.add(key); else ovMetrics.delete(key);
+  buildOvMetricsGrid();
+  renderOverlay();
+}
+
+function filterOvTeams() {
+  const q = document.getElementById('ov-team-input').value.trim();
+  const dd = document.getElementById('ov-team-dropdown');
+  if (!q) { dd.innerHTML = ''; return; }
+  const avail = Object.keys(teamStats).filter(t => !ovTeams.includes(t) && t.includes(q)).sort((a,b)=>n(a)-n(b));
+  dd.innerHTML = avail.slice(0,6).map(t => {
+    const s = teamStats[t];
+    return `<div class="chart-dropdown-item" onclick="addOvTeam('${t}')"><span>${t}</span><span class="item-meta">EPA ${s.epa} · ${s.matches} matches</span></div>`;
+  }).join('');
+}
+
+function addOvTeam(team) {
+  if (ovTeams.includes(team) || ovTeams.length >= 6) return;
+  ovTeams.push(team);
+  document.getElementById('ov-team-input').value = '';
+  document.getElementById('ov-team-dropdown').innerHTML = '';
+  renderOvTeamPills();
+  renderOverlay();
+}
+
+function removeOvTeam(team) {
+  ovTeams = ovTeams.filter(t => t !== team);
+  renderOvTeamPills();
+  renderOverlay();
+}
+
+function renderOvTeamPills() {
+  document.getElementById('ov-teams-selected').innerHTML = ovTeams.map((t, i) => {
+    const c = OV_PALETTE[i % OV_PALETTE.length];
+    return `
+    <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid ${c};border-radius:20px;padding:5px 10px;">
+      <span style="font-size:13px;font-weight:700;color:${c}">Team ${t}</span>
+      <button onclick="removeOvTeam('${t}')" style="background:none;border:none;color:${c};cursor:pointer;font-size:14px;line-height:1;padding:0">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function setOvX(x) {
+  const prev = ovX;
+  ovX = x;
+  ['teams','matches','events'].forEach(v => document.getElementById('ov-x-'+v)?.classList.toggle('active', v===x));
+  if (x === 'matches' && ovType === 'bar') {
+    ovType = 'line';
+    ['bar','line','dot'].forEach(t => document.getElementById('ov-type-'+t)?.classList.toggle('active', t==='line'));
+  } else if (prev === 'matches' && x !== 'matches' && ovType === 'line') {
+    ovType = 'bar';
+    ['bar','line','dot'].forEach(t => document.getElementById('ov-type-'+t)?.classList.toggle('active', t==='bar'));
+  }
+  renderOverlay();
+}
+
+function setOvType(type) {
+  ovType = type;
+  ['bar','line','dot'].forEach(t => document.getElementById('ov-type-'+t)?.classList.toggle('active', t===type));
+  renderOverlay();
+}
+
+function renderOverlay() {
+  const empty = document.getElementById('ov-empty');
+  const grid  = document.getElementById('ov-charts-grid');
+  if (!empty || !grid) return;
+
+  // Destroy old charts
+  ovChartInstances.forEach(c => c.destroy());
+  ovChartInstances = [];
+  grid.innerHTML = '';
+
+  if (!ovTeams.length || !ovMetrics.size) {
+    empty.style.display = 'block'; grid.style.display = 'none'; return;
+  }
+
+  const selMetrics = OV_ALL_METRICS.filter(m => ovMetrics.has(m.key));
+  empty.style.display = 'none';
+  const cols = Math.min(selMetrics.length, 3);
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+  // Helpers
+  const ovTeamAvg = (team, metric) => {
+    let rows = rawData.filter(r => r.robot_number === team);
+    if (metric.skipZero) rows = rows.filter(r => metric.extract(r) > 0);
+    return rows.length ? pct(avg(rows.map(r => metric.extract(r)))) : null;
+  };
+  const getEvent = r => r._file_event || r.event || 'unknown';
+  const EVENT_PRIORITY = ['2026vagle', '2026vabla', '2026chcmp'];
+  const allKnownEvents = [...new Set(rawData.map(getEvent).filter(e => e !== 'unknown'))].sort((a,b) => {
+    const ai = EVENT_PRIORITY.indexOf(a), bi = EVENT_PRIORITY.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1; if (bi === -1) return -1;
+    return ai - bi;
+  });
+  const colors = {};
+  ovTeams.forEach((t, i) => { colors[t] = OV_PALETTE[i % OV_PALETTE.length]; });
+  const tc = t => colors[t] || '#888';
+
+  const baseOpts = {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'nearest', intersect: false },
+    plugins: {
+      legend: { display: true, position: 'bottom', labels: { color:'#aaa', font:{size:10}, boxWidth:10, padding:6 } },
+      tooltip: { backgroundColor:'#1c1c1c', titleColor:'#f0f0f0', bodyColor:'#888', borderColor:'#2e2e2e', borderWidth:1 }
+    },
+    scales: {
+      x: { ticks:{ color:'#888', font:{size:10} }, grid:{ color:'#2e2e2e' } },
+      y: { min:0, ticks:{ color:'#888', font:{size:10} }, grid:{ color:'#2e2e2e' } }
+    }
+  };
+
+  // One chart card per metric
+  selMetrics.forEach(metric => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 10px 8px;';
+    // Color the header with the best team's color for this metric
+    const bestTeam = ovTeams.reduce((best, t) => {
+      const v = ovTeamAvg(t, metric);
+      return (v !== null && (best === null || v > ovTeamAvg(best, metric))) ? t : best;
+    }, null);
+    const titleColor = bestTeam ? tc(bestTeam) : '#888';
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = `font-size:10px;color:${titleColor};font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;text-align:center;`;
+    titleEl.textContent = metric.label;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;height:200px;';
+    const canvas = document.createElement('canvas');
+    wrap.appendChild(canvas);
+    card.appendChild(titleEl);
+    card.appendChild(wrap);
+    grid.appendChild(card);
+
+    let chart;
+
+    // ── BY TEAM ──
+    if (ovX === 'teams') {
+      if (ovType === 'bar') {
+        const sorted = [...ovTeams].sort((a,b) => (ovTeamAvg(b,metric)||0) - (ovTeamAvg(a,metric)||0));
+        chart = new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels: sorted.map(t => 'T'+t),
+            datasets: [{ data: sorted.map(t => ovTeamAvg(t,metric)), backgroundColor: sorted.map(t => tc(t)+'b3'), borderColor: sorted.map(t => tc(t)), borderWidth:2, borderRadius:4, barPercentage:0.65 }]
+          },
+          options: { ...baseOpts, plugins: { ...baseOpts.plugins, legend: { display:false } } }
+        });
+      } else {
+        const datasets = ovTeams.map((t,i) => ({
+          label: 'T'+t,
+          data: [{ x:i, y: ovTeamAvg(t,metric) }],
+          borderColor: tc(t), backgroundColor: tc(t)+'80', pointBackgroundColor: tc(t),
+          pointRadius:8, pointHoverRadius:11, borderWidth:0, showLine:false,
+        }));
+        chart = new Chart(canvas, {
+          type: 'scatter', data: { datasets },
+          options: { ...baseOpts, scales: { ...baseOpts.scales,
+            x: { type:'linear', min:-0.5, max:ovTeams.length-0.5,
+              ticks:{ color:'#888', font:{size:9}, callback: v => { const t=ovTeams[Math.round(v)]; return t?'T'+t:''; }, stepSize:1 },
+              grid:{ color:'#2e2e2e' } }, y: baseOpts.scales.y } }
+        });
+      }
+
+    // ── MATCH HISTORY ──
+    } else if (ovX === 'matches') {
+      const datasets = ovTeams.map(t => {
+        let rows = rawData.filter(r => r.robot_number === t).sort((a,b) => n(a.match_number)-n(b.match_number));
+        if (metric.skipZero) rows = rows.filter(r => metric.extract(r) > 0);
+        return {
+          label: 'T'+t, data: rows.map(r => ({ x:n(r.match_number), y:pct(metric.extract(r)) })),
+          borderColor: tc(t), backgroundColor: tc(t)+'80', pointBackgroundColor: tc(t),
+          pointRadius: ovType==='dot'?6:3, pointHoverRadius:9,
+          borderWidth: ovType==='dot'?0:2, showLine: ovType!=='dot', tension:0,
+        };
+      });
+      chart = new Chart(canvas, {
+        type: 'scatter', data: { datasets },
+        options: { ...baseOpts, scales: { ...baseOpts.scales,
+          x:{ type:'linear', ticks:{color:'#888',font:{size:10},callback:v=>'Q'+v,stepSize:1}, grid:{color:'#2e2e2e'} },
+          y: baseOpts.scales.y } }
+      });
+
+    // ── BY EVENT ──
+    } else if (ovX === 'events') {
+      if (!allKnownEvents.length) { card.remove(); return; }
+      const datasets = ovTeams.map(t => {
+        const data = allKnownEvents.map(ev => {
+          let rows = rawData.filter(r => r.robot_number === t && getEvent(r) === ev);
+          if (metric.skipZero) rows = rows.filter(r => metric.extract(r) > 0);
+          return rows.length ? pct(avg(rows.map(r => metric.extract(r)))) : null;
+        });
+        return { label:'T'+t, data, backgroundColor:tc(t)+'b3', borderColor:tc(t), borderWidth:2, borderRadius:4, barPercentage:0.65 };
+      });
+      chart = new Chart(canvas, {
+        type: 'bar', data: { labels: allKnownEvents, datasets },
+        options: { ...baseOpts }
+      });
+    }
+
+    if (chart) ovChartInstances.push(chart);
+  });
+}
+
+// ── NOTES ──────────────────────────────────────────────────────────────────
+let notesSelectedTeam = null;
+
+function notesShowLevel(level) {
+  ['teams','matches','detail'].forEach(l => {
+    document.getElementById(`notes-level-${l}`).style.display = l === level ? 'block' : 'none';
+  });
+}
+
+function notesBack(level) {
+  if (level === 'teams') { notesSelectedTeam = null; notesShowLevel('teams'); }
+  if (level === 'matches') { notesShowLevel('matches'); }
+}
+
+function renderNotes() {
+  const el = document.getElementById('notes-list');
+  const q = (document.getElementById('notes-search')?.value || '').trim();
+
+  if (!rawData.length) {
+    el.innerHTML = `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><p>Import a CSV to see scout notes</p></div>`;
+    return;
+  }
+
+  // Group rows by team
+  const byTeam = {};
+  rawData.forEach(r => {
+    if (!r.robot_number) return;
+    if (!byTeam[r.robot_number]) byTeam[r.robot_number] = [];
+    byTeam[r.robot_number].push(r);
+  });
+
+  const teams = Object.keys(byTeam)
+    .filter(t => !q || t.startsWith(q))
+    .sort((a,b) => n(a)-n(b));
+
+  if (!teams.length) {
+    el.innerHTML = `<div class="empty"><p>No team found</p></div>`;
+    return;
+  }
+
+  el.innerHTML = teams.map(t => {
+    const rows = byTeam[t];
+    const matches = [...new Set(rows.map(r => r.match_number))].length;
+    const scouts = [...new Set(rows.map(r => r.username).filter(Boolean))];
+    const incidents = rows.reduce((acc,r) =>
+      acc + n(r.lost_comms) + n(r.game_piece_stuck) + n(r.damaged_others) + n(r.damaged_self) + n(r.foul) + n(r.tipped), 0);
+
+    return `
+      <div class="notes-team-row" onclick="openNotesTeam('${t}')">
+        <div class="notes-team-row-left">
+          <span class="notes-team-row-num">Team ${t}</span>
+          <span class="notes-team-row-meta">${matches} match${matches!==1?'es':''} · ${scouts.length} scout${scouts.length!==1?'s':''}${incidents>0?' · ⚠️ '+incidents+' incident'+(incidents!==1?'s':''):''}</span>
+        </div>
+        <div class="notes-team-row-right">
+          <svg class="notes-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openNotesTeam(team) {
+  notesSelectedTeam = team;
+  const rows = rawData.filter(r => r.robot_number === team)
+    .sort((a,b) => n(a.match_number) - n(b.match_number));
+
+  const commentedRows = rows.filter(r => r.notes && r.notes.trim());
+  const commentsSection = commentedRows.length ? `
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 8px;">Scout Comments</div>
+    ${commentedRows.map(r => `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;">
+        <div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:6px;">${r.notes.trim()}</div>
+        <div style="font-size:11px;color:var(--muted);">Q${r.match_number} · ${r._file_event || '—'} · ${r.username || '—'}</div>
+      </div>`).join('')}
+    <div style="height:4px;"></div>
+  ` : '';
+
+  document.getElementById('notes-matches-content').innerHTML = `
+    <div style="margin-bottom:12px">
+      <div style="font-size:22px;font-weight:800">Team ${team}</div>
+      <div style="font-size:13px;color:var(--muted)">${rows.length} scouting entr${rows.length!==1?'ies':'y'}</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">AI Summary</div>
+      <div id="notes-ai-summary-text" style="font-size:13px;line-height:1.6;color:var(--muted);">
+        ${commentedRows.length ? 'Generating summary…' : 'No comments recorded.'}
+      </div>
+    </div>
+    ${commentsSection}
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 8px;">Match Log</div>
+    ${rows.map((r,i) => {
+      const alliance = (r.alliance||'').toLowerCase();
+      const incidents = [n(r.lost_comms),n(r.game_piece_stuck),n(r.damaged_others),n(r.damaged_self),n(r.foul),n(r.tipped)].reduce((a,b)=>a+b,0);
+      return `
+        <div class="match-row-note" onclick="openNoteDetail('${team}', ${i})">
+          <div class="match-row-note-left">
+            <div class="match-row-note-title">
+              <span>Q${r.match_number}</span>
+              <span class="match-alliance alliance-${alliance==='red'?'red':'blue'}">${r.alliance||'?'}</span>
+            </div>
+            <div class="match-row-note-sub">
+              ${r.username || '—'} · <strong>${r._file_event || '—'}</strong> · ${n(r.auto_shots)+n(r.teleop_shots)} shots · ${n(r.robot_accuracy)>0?r.robot_accuracy+'% acc · ':''}spd ${n(r.robot_speed)||'—'}${incidents>0?' · ⚠️ '+incidents+' incident'+(incidents!==1?'s':''):''}
+            </div>
+            ${r.notes && r.notes.trim() ? `<div style="font-size:12px;color:var(--text);opacity:.75;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;">"${r.notes.trim()}"</div>` : ''}
+          </div>
+          <svg class="notes-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>`;
+    }).join('')}`;
+
+  notesShowLevel('matches');
+
+  if (commentedRows.length) {
+    summarizeNotesComments(commentedRows.map(r => r.notes.trim()));
+  }
+}
+
+let _notesSummaryAbort = null;
+async function summarizeNotesComments(comments) {
+  if (_notesSummaryAbort) { _notesSummaryAbort.abort(); }
+  const controller = new AbortController();
+  _notesSummaryAbort = controller;
+
+  const key = localStorage.getItem('anthropic_key') || '';
+  const el = document.getElementById('notes-ai-summary-text');
+  if (!el) return;
+  if (!key) {
+    el.textContent = 'Add an Anthropic API key in Settings to enable AI summaries.';
+    return;
+  }
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-calls': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        system: 'You are a concise FRC scouting assistant. Summarize the qualitative scout comments provided. Focus only on observations about robot behavior, strategy, strengths, and weaknesses. Do not include or reference any numerical data. Keep it to 2-4 sentences.',
+        messages: [{ role: 'user', content: comments.map((c, i) => `Comment ${i+1}: ${c}`).join('\n') }]
+      })
+    });
+    const data = await res.json();
+    const live = document.getElementById('notes-ai-summary-text');
+    if (live) live.textContent = (data.content && data.content[0] && data.content[0].text) || 'Could not generate summary.';
+  } catch(err) {
+    if (err.name === 'AbortError') return;
+    const live = document.getElementById('notes-ai-summary-text');
+    if (live) live.textContent = 'Error generating summary: ' + err.message;
+  }
+}
+
+function openNoteDetail(team, rowIndex) {
+  const rows = rawData.filter(r => r.robot_number === team)
+    .sort((a,b) => n(a.match_number) - n(b.match_number));
+  const r = rows[rowIndex];
+  if (!r) return;
+
+  document.getElementById('notes-detail-back-label').textContent = `Team ${team}`;
+
+  const alliance = (r.alliance||'').toLowerCase();
+
+  const abilities = [];
+  if (r.ability_bump    && r.ability_bump    !== 'didnt') abilities.push(`Bump: <strong>${r.ability_bump}</strong>`);
+  if (r.ability_trench  && r.ability_trench  !== 'didnt') abilities.push(`Trench: <strong>${r.ability_trench}</strong>`);
+  if (r.ability_outpost && r.ability_outpost !== 'didnt') abilities.push(`Outpost: <strong>${r.ability_outpost}</strong>`);
+
+  const incidents = [];
+  if (n(r.lost_comms))       incidents.push('Lost comms');
+  if (n(r.game_piece_stuck)) incidents.push('Piece stuck');
+  if (n(r.damaged_others))   incidents.push('Damaged others');
+  if (n(r.damaged_self))     incidents.push('Damaged self');
+  if (n(r.foul))             incidents.push('Foul');
+  if (n(r.knocked_teammate)) incidents.push('Knocked teammate');
+  if (n(r.almost_tipped))    incidents.push('Almost tipped');
+  if (n(r.tipped))           incidents.push('Tipped');
+
+  document.getElementById('notes-detail-content').innerHTML = `
+    <div class="note-card">
+      <div class="note-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="note-team">Team ${r.robot_number}</span>
+          <span class="match-alliance alliance-${alliance==='red'?'red':'blue'}">Q${r.match_number}</span>
+        </div>
+        <div class="note-meta">
+          ${r._file_event ? `<span class="tag">${r._file_event}</span>` : ''}
+        </div>
+      </div>
+
+      <div class="note-section">
+        <div class="note-section-title">Scouted by</div>
+        <div class="note-line">${r.username || '—'} &nbsp;·&nbsp; <strong>${r._file_event || 'unknown event'}</strong></div>
+      </div>
+
+      <div class="note-section">
+        <div class="note-section-title">Scoring</div>
+        <div class="note-body">
+          <div class="note-line"><span>Auto shots:</span><strong>${n(r.auto_shots)}</strong> (${n(r.auto_accuracy)>0?r.auto_accuracy+'% acc':'acc unknown'})</div>
+          <div class="note-line"><span>Teleop shots:</span><strong>${n(r.teleop_shots)}</strong></div>
+          <div class="note-line"><span>Total shots:</span><strong>${n(r.auto_shots)+n(r.teleop_shots)}</strong></div>
+          ${n(r.robot_accuracy)>0?`<div class="note-line"><span>Robot accuracy:</span><strong>${r.robot_accuracy}%</strong></div>`:''}
+          ${n(r.passed_shots)>0?`<div class="note-line"><span>Passed shots:</span>${r.passed_shots}</div>`:''}
+        </div>
+      </div>
+
+      <div class="note-section">
+        <div class="note-section-title">Robot</div>
+        <div class="note-body">
+          <div class="note-line"><span>Speed:</span>${n(r.robot_speed)||'—'} &nbsp;·&nbsp; <span>Agility:</span>${n(r.robot_agility)||'—'}</div>
+          ${n(r.robot_defense)>0?`<div class="note-line"><span>Defense:</span>${r.robot_defense}</div>`:''}
+          ${n(r.robot_climbing_speed)>0?`<div class="note-line"><span>Climbing speed:</span>${r.robot_climbing_speed}</div>`:''}
+        </div>
+      </div>
+
+      <div class="note-section">
+        <div class="note-section-title">Scout Observations</div>
+        <div class="note-body">
+          <div class="note-line"><span>Bump:</span><strong>${r.ability_bump || '—'}</strong></div>
+          <div class="note-line"><span>Trench:</span><strong>${r.ability_trench || '—'}</strong></div>
+          <div class="note-line"><span>Outpost:</span><strong>${r.ability_outpost || '—'}</strong></div>
+          ${r.endgame_climb_pos && r.endgame_climb_pos !== '0' ? `<div class="note-line"><span>Climb position:</span><strong>${r.endgame_climb_pos}</strong></div>` : ''}
+          ${n(r.ball_starving_duration_ms) > 0 ? `<div class="note-line"><span>Ball starved for:</span><strong>${(n(r.ball_starving_duration_ms)/1000).toFixed(1)}s</strong></div>` : ''}
+          ${n(r.refueled_duration_ms) > 0 ? `<div class="note-line"><span>Time refueling:</span><strong>${(n(r.refueled_duration_ms)/1000).toFixed(1)}s</strong></div>` : ''}
+        </div>
+      </div>
+
+      <div class="note-section">
+        <div class="note-section-title">Field Position</div>
+        <div class="note-body">
+          <div class="note-line"><span>Time in alliance zone:</span>${r.time_alliance_ms>0?(n(r.time_alliance_ms)/1000).toFixed(1)+'s':'—'}</div>
+          <div class="note-line"><span>Time in neutral:</span>${r.time_neutral_ms>0?(n(r.time_neutral_ms)/1000).toFixed(1)+'s':'—'}</div>
+          <div class="note-line"><span>Time in enemy zone:</span>${n(r.time_enemy_ms)>0?(n(r.time_enemy_ms)/1000).toFixed(1)+'s':'—'}</div>
+        </div>
+      </div>
+
+      ${incidents.length ? `
+      <div class="note-section">
+        <div class="note-section-title">Incidents</div>
+        <div class="note-incidents">${incidents.map(i=>`<span class="incident-chip">${i}</span>`).join('')}</div>
+      </div>` : ''}
+
+      ${r.notes && r.notes.trim() ? `
+      <div class="note-section">
+        <div class="note-section-title">Scout Comments</div>
+        <div style="font-size:14px;color:var(--text);line-height:1.6;padding:10px 12px;background:var(--card2);border-radius:8px;border-left:3px solid var(--accent);">${r.notes.trim()}</div>
+      </div>` : ''}
+    </div>`;
+
+  notesShowLevel('detail');
+}
+
+// ── NAVIGATION ─────────────────────────────────────────────────────────────
+function showPage(page, skipActive) {
+  if (!skipActive) activePage = page;
+  document.getElementById('team-detail').style.display = 'none';
+  document.querySelectorAll('.page').forEach(p => { p.style.display = 'none'; p.classList.remove('active'); });
+  const el = document.getElementById('page-' + page);
+  if (el) { el.style.display = 'block'; el.classList.add('active'); }
+  document.querySelectorAll('.nav-btn').forEach((b, i) => {
+    const pages = ['rankings','teams','compare','charts','notes','predict','rotation','picklist','schedule','import'];
+    b.classList.toggle('active', pages[i] === page);
+  });
+  if (page === 'picklist') renderPicklist();
+  if (page === 'schedule') renderSchedule();
+  // rotation re-render not needed — table persists in DOM
+}
+
+
+// ── MATCH PREDICTOR ────────────────────────────────────────────────────────
+var predictCharts = [];
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && document.getElementById('page-predict').classList.contains('active')) {
+    runPrediction();
+  }
+});
+function clearAllTeams() {
+  ['red1','red2','red3','blue1','blue2','blue3'].forEach(id => document.getElementById(id).value = '');
+  clearPrediction();
+}
+function clearPrediction() {
+  document.getElementById('predict-result').style.display = 'none';
+  document.getElementById('predict-err').textContent = '';
+  predictCharts.forEach(c => c.destroy());
+  predictCharts = [];
+  document.getElementById('predict-charts').innerHTML = '';
+}
+
+function runPrediction() {
+  const ids = ['red1','red2','red3','blue1','blue2','blue3'];
+  const vals = ids.map(id => document.getElementById(id).value.trim());
+  const redTeams  = vals.slice(0,3);
+  const blueTeams = vals.slice(3,6);
+
+  if (!redTeams.some(t=>t) || !blueTeams.some(t=>t)) {
+    document.getElementById('predict-err').textContent = 'Enter at least one team per alliance.';
+    return;
+  }
+  document.getElementById('predict-err').textContent = '';
+
+  // ── Multi-factor prediction model v2 + Monte Carlo simulation ──
+  const all = Object.values(teamStats);
+  const leagueAvg = (key) => all.length ? all.reduce((a,s)=>a+(s[key]||0),0)/all.length : 0;
+  const lgEPA     = leagueAvg('epa')          || 30;
+  const lgShots   = leagueAvg('avgTotalShots') || 20;
+  const lgAuto    = leagueAvg('avgAutoShots')  || 5;
+  const lgAcc     = leagueAvg('avgAccuracy')   || 50;
+  const lgSpeed   = leagueAvg('avgSpeed')      || 2.5;
+  const FULL_SAMPLE = 12;
+  const N_SIM = 10000;
+
+  const eventOrder = { '2026vagle': 1, '2026vabla': 2, '2026chcmp': 3 };
+
+  const stdDev = (arr) => {
+    if (arr.length < 2) return 0;
+    const m = arr.reduce((a,b)=>a+b,0)/arr.length;
+    return Math.sqrt(arr.reduce((a,b)=>a+(b-m)**2,0)/arr.length);
+  };
+
+  // Box-Muller normal distribution sampler
+  const randn = () => {
+    const u1 = Math.random(), u2 = Math.random();
+    return Math.sqrt(-2 * Math.log(Math.max(u1, 1e-10))) * Math.cos(2 * Math.PI * u2);
+  };
+
+  const robotScore = (t, simulate = false) => {
+    const s = teamStats[t] || null;
+    if (!s) return { score: lgEPA, known: false, dataQuality: 0,
+      epa:null, shots:null, acc:null, auto:null, passed:null, speed:null, defense:null, reliability:null, consistency:null, climbAvg:null };
+
+    const sampleWeight = Math.min(s.matches / FULL_SAMPLE, 1);
+    const rows = s.rows || [];
+    const totalWeight = rows.reduce((a,r) => a + (eventOrder[r._file_event]||1), 0);
+    const wAvg = (col) => {
+      if (!totalWeight) return s['avg'+col.charAt(0).toUpperCase()+col.slice(1)] || 0;
+      return rows.reduce((a,r) => a + n(r[col]) * (eventOrder[r._file_event]||1), 0) / totalWeight;
+    };
+    const wTeleShots = wAvg('teleop_shots');
+    const wAutoShots = wAvg('auto_shots');
+    const wAccuracy  = wAvg('robot_accuracy');
+    const wAutoAcc   = wAvg('auto_accuracy');
+    const wPassed    = wAvg('passed_shots');
+    const wSpeed     = wAvg('robot_speed');
+    const wAgility   = wAvg('robot_agility');
+    const wClimb     = wAvg('endgame_climb_level');
+
+    let teleShots = wTeleShots * sampleWeight + lgShots * 0.6 * (1 - sampleWeight);
+    let autoShots = wAutoShots * sampleWeight + lgAuto  * (1 - sampleWeight);
+    let accuracy  = wAccuracy  * sampleWeight + lgAcc   * (1 - sampleWeight);
+    const autoAcc = wAutoAcc > 0 ? wAutoAcc : 70;
+    const speed   = wSpeed   * sampleWeight + lgSpeed * (1 - sampleWeight);
+
+    // ── Monte Carlo: perturb stats by historical std dev ──
+    if (simulate) {
+      const sdTele = stdDev(rows.map(r => n(r.teleop_shots)));
+      const sdAuto = stdDev(rows.map(r => n(r.auto_shots)));
+      const sdAcc  = stdDev(rows.map(r => n(r.robot_accuracy)));
+      teleShots = Math.max(0, teleShots + randn() * sdTele * sampleWeight);
+      autoShots = Math.max(0, autoShots + randn() * sdAuto * sampleWeight);
+      accuracy  = Math.max(10, Math.min(100, accuracy + randn() * sdAcc * sampleWeight));
+    }
+
+    const shotsList = rows.map(r => n(r.teleop_shots) + n(r.auto_shots));
+    const sd = stdDev(shotsList);
+    const avgShots = shotsList.length ? shotsList.reduce((a,b)=>a+b,0)/shotsList.length : 1;
+    const cvPenalty = avgShots > 0 ? Math.max(0.75, 1 - (sd / avgShots) * 0.25) : 1;
+
+    const climbBonus   = wClimb * 2;
+    const agilityBonus = (wAgility / 5) * 1.5;
+
+    const incPerMatch = s.matches > 0 ? ((s.incLostComms||0)+(s.incStuck||0)+(s.incTipped||0)) / s.matches : 0;
+    let reliabilityMult = Math.max(0.7, 1 - incPerMatch * 0.15);
+    if (simulate && Math.random() < incPerMatch * 0.3) reliabilityMult *= 0.6;
+
+    const shootingScore = teleShots * (accuracy / 100);
+    const autoBonus     = autoShots * 1.5 * (autoAcc / 100);
+    const passBonus     = wPassed * 0.4;
+    const speedBonus    = (speed / 5) * 3;
+    const rawScore      = (shootingScore + autoBonus + passBonus + speedBonus + climbBonus + agilityBonus) * reliabilityMult * cvPenalty;
+
+    const dataQuality = Math.round(sampleWeight * 100);
+    const baseReliability = Math.max(0.7, 1 - incPerMatch * 0.15);
+    return {
+      score: Math.max(rawScore, 1), known: true, dataQuality,
+      epa: s.epa, shots: s.avgTotalShots, acc: Math.round(accuracy),
+      auto: Math.round(autoShots * 10)/10, passed: Math.round(wPassed * 10)/10,
+      speed: Math.round(speed * 10)/10, defense: s.avgDefense,
+      reliability: Math.round(baseReliability * 100),
+      consistency: Math.round(cvPenalty * 100),
+      climbAvg: Math.round(wClimb * 10)/10
+    };
+  };
+
+  const allianceScore = (teams, oppTeams, simulate = false) => {
+    let total = 0, breakdown = [];
+    const robots = teams.map(t => ({ team: t, ...robotScore(t, simulate) }));
+    const oppBestDef = oppTeams.reduce((best, t) => {
+      const s = teamStats[t]; return s ? Math.max(best, s.avgDefense||0) : best;
+    }, 0);
+    const defenseMult = oppBestDef > 0 ? 1 - (oppBestDef / 5) * 0.12 : 1;
+    robots.forEach(r => {
+      const adj = r.score * defenseMult;
+      total += adj;
+      breakdown.push({ ...r, adjustedScore: Math.round(adj) });
+    });
+    return { total: Math.round(total), breakdown, defenseMult };
+  };
+
+  const redFiltered  = redTeams.filter(t=>t);
+  const blueFiltered = blueTeams.filter(t=>t);
+
+  // ── Run N_SIM Monte Carlo simulations, average the results ──
+  const simRedScores = [], simBlueScores = [];
+  const robotScoreTotals = {};
+  [...redFiltered, ...blueFiltered].forEach(t => { robotScoreTotals[t] = 0; });
+  for (let i = 0; i < N_SIM; i++) {
+    const redSim  = allianceScore(redFiltered, blueFiltered, true);
+    const blueSim = allianceScore(blueFiltered, redFiltered, true);
+    simRedScores.push(redSim.total);
+    simBlueScores.push(blueSim.total);
+    [...redSim.breakdown, ...blueSim.breakdown].forEach(r => {
+      if (r.team in robotScoreTotals) robotScoreTotals[r.team] += r.adjustedScore;
+    });
+  }
+  const avgRedSim  = Math.round(simRedScores.reduce((a,b)=>a+b,0) / N_SIM);
+  const avgBlueSim = Math.round(simBlueScores.reduce((a,b)=>a+b,0) / N_SIM);
+  const redSimWins = simRedScores.filter((r,i) => r > simBlueScores[i]).length;
+
+  // Deterministic run for stat chips; override score contributions with sim averages
+  const red  = allianceScore(redFiltered,  blueFiltered, false);
+  const blue = allianceScore(blueFiltered, redFiltered,  false);
+  red.total  = avgRedSim;
+  blue.total = avgBlueSim;
+  [...red.breakdown, ...blue.breakdown].forEach(r => {
+    if (r.team in robotScoreTotals) r.adjustedScore = Math.round(robotScoreTotals[r.team] / N_SIM);
+  });
+
+  // ── Confidence: simulation win rate + data quality ──
+  const winner = avgRedSim > avgBlueSim ? 'red' : avgBlueSim > avgRedSim ? 'blue' : 'tie';
+  const winnerSimWins = winner === 'red' ? redSimWins : (N_SIM - redSimWins);
+  const confidence = Math.min(Math.round(50 + ((winnerSimWins / N_SIM) - 0.5) * 90), 99);
+
+  const banner = document.getElementById('predict-banner');
+  const winnerLabel = document.getElementById('predict-winner-label');
+  const winnerName  = document.getElementById('predict-winner-name');
+  const confEl      = document.getElementById('predict-confidence');
+
+  if (winner === 'tie') {
+    banner.style.background = 'rgba(136,136,136,.12)';
+    banner.style.border = '1px solid rgba(136,136,136,.3)';
+    winnerLabel.textContent = 'Prediction';
+    winnerName.style.color = '#888';
+    winnerName.textContent = 'Too Close to Call';
+    confEl.textContent = `${redSimWins}/${N_SIM} red · ${N_SIM - redSimWins}/${N_SIM} blue`;
+  } else {
+    const isRed = winner === 'red';
+    banner.style.background = isRed ? 'rgba(224,85,85,.12)' : 'rgba(59,130,246,.12)';
+    banner.style.border = `1px solid ${isRed ? 'rgba(224,85,85,.4)' : 'rgba(59,130,246,.4)'}`;
+    winnerLabel.textContent = 'Predicted Winner';
+    winnerName.style.color = isRed ? '#e05555' : '#60a5fa';
+    winnerName.textContent = isRed ? 'Red Alliance' : 'Blue Alliance';
+    confEl.textContent = `${confidence}% confidence · ${winnerSimWins}/${N_SIM} simulations`;
+  }
+
+  document.getElementById('pred-red-score').textContent  = red.total;
+  document.getElementById('pred-blue-score').textContent = blue.total;
+
+  const makeRows = (breakdown, color) => breakdown.map(d => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div style="font-size:14px;font-weight:700;color:${color};">Team ${d.team}${!d.known?' <span style="font-size:10px;color:var(--muted);">(estimated)</span>':''}</div>
+        <div style="font-size:12px;color:var(--muted);">Score contribution: <strong style="color:var(--text);">${d.adjustedScore || Math.round(d.score)}</strong></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
+        ${d.epa !== null ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--text);">EPA ${d.epa}</span>` : ''}
+        ${d.shots !== null ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--text);">Shots ${d.shots}</span>` : ''}
+        ${d.auto ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--accent);">Auto ${d.auto}</span>` : ''}
+        ${d.acc ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--text);">Acc ${d.acc}%</span>` : ''}
+        ${d.passed ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--text);">Pass ${d.passed}</span>` : ''}
+        ${d.speed ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--text);">Spd ${d.speed}/5</span>` : ''}
+        ${d.defense ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--red);">Def ${d.defense}/5</span>` : ''}
+        ${d.climbAvg ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:var(--green);">Climb ${d.climbAvg}</span>` : ''}
+        ${d.reliability !== null ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:${d.reliability>=90?'var(--green)':d.reliability>=75?'var(--yellow)':'var(--red)'};">Reliability ${d.reliability}%</span>` : ''}
+        ${d.consistency !== null ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:${d.consistency>=90?'var(--green)':d.consistency>=75?'var(--yellow)':'var(--red)'};">Consistency ${d.consistency}%</span>` : ''}
+        ${d.known ? `<span style="background:var(--card2);border-radius:5px;padding:2px 7px;color:${d.dataQuality>=80?'var(--green)':d.dataQuality>=40?'var(--yellow)':'var(--red)'};">Confidence ${d.dataQuality}%</span>` : ''}
+      </div>
+    </div>`).join('');
+
+  document.getElementById('predict-breakdown-content').innerHTML =
+    makeRows(red.breakdown, '#e05555') + makeRows(blue.breakdown, '#60a5fa');
+
+  // Build charts
+  predictCharts.forEach(c => c.destroy());
+  predictCharts = [];
+  const allTeams = [...red.breakdown, ...blue.breakdown];
+  const labels = allTeams.map(d => 'T' + d.team);
+  const bgColors = [
+    ...red.breakdown.map(() => 'rgba(224,85,85,.7)'),
+    ...blue.breakdown.map(() => 'rgba(59,130,246,.7)')
+  ];
+  const borderColors = [
+    ...red.breakdown.map(() => '#e05555'),
+    ...blue.breakdown.map(() => '#60a5fa')
+  ];
+  const chartDefs = [
+    { label: 'Score Contribution', data: allTeams.map(d => d.adjustedScore || Math.round(d.score)) },
+    { label: 'EPA', data: allTeams.map(d => typeof d.epa === 'number' ? d.epa : 0) },
+    { label: 'Avg Total Shots', data: allTeams.map(d => d.shots !== null ? d.shots : 0) },
+    { label: 'Auto Shots', data: allTeams.map(d => d.auto || 0) },
+    { label: 'Accuracy %', data: allTeams.map(d => d.acc || 0) },
+    { label: 'Passing', data: allTeams.map(d => d.passed || 0) },
+    { label: 'Speed (1–5)', data: allTeams.map(d => d.speed || 0) },
+    { label: 'Defense (1–5)', data: allTeams.map(d => d.defense || 0) },
+    { label: 'Avg Climb Level', data: allTeams.map(d => d.climbAvg || 0) },
+    { label: 'Reliability %', data: allTeams.map(d => d.reliability !== null ? d.reliability : 0) },
+    { label: 'Consistency %', data: allTeams.map(d => d.consistency !== null ? d.consistency : 0) },
+    { label: 'Data Confidence %', data: allTeams.map(d => d.dataQuality || 0) },
+  ].filter(def => def.data.some(v => v > 0));
+
+  const chartContainer = document.getElementById('predict-charts');
+  chartContainer.innerHTML = '';
+  const chartOpts = () => ({
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { backgroundColor:'#1c1c1c', titleColor:'#f0f0f0', bodyColor:'#888', borderColor:'#2e2e2e', borderWidth:1 }
+    },
+    scales: {
+      x: { ticks: { color:'#888', font:{size:11} }, grid:{ color:'#2e2e2e' } },
+      y: { min: 0, ticks: { color:'#888', font:{size:11} }, grid:{ color:'#2e2e2e' } }
+    }
+  });
+
+  chartDefs.forEach(def => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;';
+    wrap.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">${def.label}</div><div style="position:relative;height:160px;"><canvas></canvas></div>`;
+    chartContainer.appendChild(wrap);
+    const canvas = wrap.querySelector('canvas');
+    predictCharts.push(new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets: [{ data: def.data, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 2, borderRadius: 5 }] },
+      options: chartOpts()
+    }));
+  });
+
+  document.getElementById('predict-result').style.display = 'block';
+}
+
+// ── LOCK SCREENS ───────────────────────────────────────────────────────────
+var aiUnlocked = false;
+
+
+function requestImportPage() {
+  if (aiUnlocked) { showPage('import'); return; }
+  document.getElementById('ai-lock').classList.remove('hidden');
+  document.getElementById('ai-lock-input').value = '';
+  document.getElementById('ai-lock-err').textContent = '';
+  document.getElementById('ai-lock').dataset.target = 'import';
+  document.getElementById('ai-lock-title').textContent = 'Import Access Password';
+  document.getElementById('ai-lock-logo').innerHTML = 'Import <span>Access</span>';
+  setTimeout(function(){ document.getElementById('ai-lock-input').focus(); }, 50);
+}
+
+
+function submitAILock() {
+  var val = document.getElementById('ai-lock-input').value;
+  if (val === 'Lg121609!') {
+    aiUnlocked = true;
+    var target = document.getElementById('ai-lock').dataset.target || 'ai';
+    document.getElementById('ai-lock').classList.add('hidden');
+    showPage(target);
+  } else {
+    var inp = document.getElementById('ai-lock-input');
+    inp.classList.remove('shake');
+    void inp.offsetWidth;
+    inp.classList.add('shake');
+    document.getElementById('ai-lock-err').textContent = 'Incorrect password.';
+    inp.value = '';
+  }
+}
+
+// ── FEATURE 1: TEAM FLAGS ──────────────────────────────────────────────────
+let teamFlags = {};
+
+function saveFlags() {
+  localStorage.setItem('frc_flags', JSON.stringify(teamFlags));
+}
+
+function loadFlags() {
+  try { teamFlags = JSON.parse(localStorage.getItem('frc_flags') || '{}'); } catch(e) { teamFlags = {}; }
+}
+
+function flagEmoji(team) {
+  const f = teamFlags[team]?.flag;
+  return f === 'target' ? '🎯' : f === 'watch' ? '⚠️' : f === 'avoid' ? '❌' : '';
+}
+
+function cycleFlag(team) {
+  const cur = teamFlags[team]?.flag;
+  if (!cur) teamFlags[team] = { flag: 'target', note: teamFlags[team]?.note || '' };
+  else if (cur === 'target') teamFlags[team].flag = 'watch';
+  else if (cur === 'watch') teamFlags[team].flag = 'avoid';
+  else delete teamFlags[team];
+  saveFlags();
+}
+
+function setFlag(team, flag) {
+  const cur = teamFlags[team]?.flag;
+  const note = teamFlags[team]?.note || '';
+  if (cur === flag) delete teamFlags[team];
+  else teamFlags[team] = { flag, note };
+  saveFlags();
+  const section = document.getElementById('flag-section-' + team);
+  if (section) section.innerHTML = buildFlagSection(team);
+  document.querySelectorAll('[data-flag-team="' + team + '"]').forEach(el => {
+    el.textContent = flagEmoji(team) || '·';
+  });
+}
+
+function buildFlagSection(team) {
+  const cur = teamFlags[team]?.flag;
+  const note = teamFlags[team]?.note || '';
+  const btn = (flag, emoji) => {
+    const active = cur === flag;
+    return `<button onclick="setFlag('${team}','${flag}')" style="font-size:22px;padding:8px 14px;border-radius:10px;border:2px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'var(--card2)' : 'transparent'};cursor:pointer;line-height:1;-webkit-appearance:none;">${emoji}</button>`;
+  };
+  return `
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Flag</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      ${btn('target','🎯')}
+      ${btn('watch','⚠️')}
+      ${btn('avoid','❌')}
+      ${cur ? `<span style="align-self:center;font-size:13px;color:var(--muted);margin-left:2px;">${cur.charAt(0).toUpperCase()+cur.slice(1)}</span>` : '<span style="align-self:center;font-size:13px;color:var(--muted);margin-left:2px;">No flag</span>'}
+    </div>
+    <input type="text" placeholder="Add a note…" value="${note.replace(/"/g,'&quot;')}"
+      style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;-webkit-appearance:none;"
+      oninput="if(!teamFlags['${team}'])teamFlags['${team}']={flag:'',note:''};teamFlags['${team}'].note=this.value;saveFlags();">`;
+}
+
+// ── FEATURE 2: ALLIANCE PICKLIST ───────────────────────────────────────────
+let picklistMyTeam = '';
+let teamStatus = {};
+let plFilter = 'all';
+
+function setPlFilter(f) {
+  plFilter = f;
+  ['all','available','taken','dnp'].forEach(x => document.getElementById('pl-filter-'+x)?.classList.toggle('active', x===f));
+  renderPicklist();
+}
+
+function setTeamStatus(team, status) {
+  if (teamStatus[team] === status) delete teamStatus[team];
+  else teamStatus[team] = status;
+  localStorage.setItem('frc_team_status', JSON.stringify(teamStatus));
+  renderPicklist();
+}
+
+function resetPicklistStatuses() {
+  teamStatus = {};
+  localStorage.setItem('frc_team_status', JSON.stringify(teamStatus));
+  renderPicklist();
+}
+
+function renderPicklist() {
+  const list = document.getElementById('picklist-list');
+  const suggestion = document.getElementById('picklist-suggestion');
+  if (!list) return;
+
+  const allTeams = Object.entries(teamStats)
+    .map(([t, s]) => ({ team: t, epa: s.epa, matches: s.matches, shots: s.avgTotalShots, auto: s.avgAutoShots, accuracy: s.avgAccuracy, climb: s.climbRate }))
+    .sort((a, b) => b.epa - a.epa);
+
+  if (!allTeams.length) {
+    list.innerHTML = '<div class="empty"><p>Import scouting data to build a picklist</p></div>';
+    if (suggestion) suggestion.style.display = 'none';
+    return;
+  }
+
+  const myStats = picklistMyTeam ? teamStats[picklistMyTeam] : null;
+  const available = allTeams.filter(t => !teamStatus[t.team] && t.team !== picklistMyTeam);
+
+  if (suggestion) {
+    if (available.length) {
+      const scorePick = (t) => {
+        let score = t.epa * 10;
+        if (myStats) {
+          if (myStats.avgAutoShots < 2 && t.auto > 2) score += 15;
+          if ((myStats.climbRate || 0) < 0.5 && (t.climb || 0) > 0.5) score += 20;
+          if ((myStats.avgAccuracy || 0) < 60 && (t.accuracy || 0) > 70) score += 10;
+        }
+        return score;
+      };
+      const best = [...available].sort((a,b) => scorePick(b) - scorePick(a))[0];
+      const flag = flagEmoji(best.team);
+      suggestion.style.display = 'block';
+      suggestion.innerHTML = `
+        <div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">⭐ Best Available Pick</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:24px;font-weight:800;color:var(--accent)">T${best.team}</div>
+          <div style="font-size:13px;color:var(--text)">${flag}</div>
+          <div style="flex:1;font-size:12px;color:var(--muted)">EPA ${best.epa} · ${best.shots} shots · ${best.matches} matches</div>
+          <button onclick="setTeamStatus('${best.team}','taken')" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--muted);font-size:12px;cursor:pointer;">Taken</button>
+        </div>`;
+    } else {
+      suggestion.style.display = 'none';
+    }
+  }
+
+  // Restore input value if it got wiped by a re-render
+  const myInput = document.getElementById('picklist-my-team');
+  if (myInput && picklistMyTeam && !myInput.value) myInput.value = picklistMyTeam;
+
+  const filtered = allTeams.filter(t => {
+    if (t.team === picklistMyTeam) return false; // always hide your own team
+    const status = teamStatus[t.team] || 'available';
+    if (plFilter === 'all') return true;
+    return status === plFilter;
+  });
+
+  list.innerHTML = filtered.map((t, i) => {
+    const status = teamStatus[t.team] || 'available';
+    const flag = flagEmoji(t.team);
+    const statusColor = status === 'taken' ? 'var(--muted)' : status === 'dnp' ? 'var(--red)' : 'var(--text)';
+    const cardOpacity = status === 'dnp' ? '0.5' : '1';
+    return `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:${cardOpacity}">
+        <div style="font-size:13px;font-weight:700;color:var(--muted);width:24px;text-align:right">${i+1}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:16px;font-weight:800;color:${statusColor}">T${t.team}</span>
+            <span style="font-size:13px">${flag}</span>
+            ${status === 'taken' ? '<span style="font-size:10px;color:var(--muted);background:var(--card2);border-radius:6px;padding:1px 6px">TAKEN</span>' : ''}
+            ${status === 'dnp' ? '<span style="font-size:10px;color:var(--red);background:var(--card2);border-radius:6px;padding:1px 6px">DNP</span>' : ''}
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">EPA ${t.epa} · ${t.shots} shots · ${t.matches} matches</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="setTeamStatus('${t.team}','taken')" style="background:var(--card2);border:1px solid ${status==='taken'?'var(--muted)':'var(--border)'};border-radius:8px;padding:5px 8px;color:${status==='taken'?'var(--muted)':'var(--muted)'};font-size:11px;cursor:pointer;font-weight:600">✓</button>
+          <button onclick="setTeamStatus('${t.team}','dnp')" style="background:var(--card2);border:1px solid ${status==='dnp'?'var(--red)':'var(--border)'};border-radius:8px;padding:5px 8px;color:${status==='dnp'?'var(--red)':'var(--muted)'};font-size:11px;cursor:pointer;font-weight:600">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── ROTATION ─────────────────────────────────────────────────────────────
+
+function autoFillScouts() {
+  if (!rawData || !rawData.length) { alert('No data loaded — import CSV data first'); return; }
+  const nameFields = ['username','Username','user_name','scout','Scout','scouter','name','Name','scout_name'];
+  const usedField = nameFields.find(f => rawData.some(r => r[f]));
+  if (!usedField) { alert('No scout name column found in data'); return; }
+  const scouts = [...new Set(rawData.map(r => r[usedField]).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  document.getElementById('rot-scouts').value = scouts.join('\n');
+}
+
+function generateRotation() {
+  const output = document.getElementById('rotation-output');
+  const scouts = (document.getElementById('rot-scouts').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const blockSize = Math.max(1, parseInt(document.getElementById('rot-block-size').value) || 6);
+
+  if (!scouts.length) { output.innerHTML = '<div class="empty"><p>Enter at least one scout name</p></div>'; return; }
+  if (!matchSchedule.length) { output.innerHTML = '<div class="empty"><p>Load a match schedule on the Schedule tab first</p></div>'; return; }
+
+  const N = scouts.length;
+  const positions = ['Blue 1','Blue 2','Blue 3','Red 1','Red 2','Red 3'];
+  const numBlocks = Math.ceil(matchSchedule.length / blockSize);
+
+  // Parse per-scout block limits (optional): "Name: 2"
+  const limits = {};
+  (document.getElementById('rot-limits').value || '').split('\n').forEach(line => {
+    const colon = line.lastIndexOf(':');
+    if (colon < 0) return;
+    const name = line.slice(0, colon).trim();
+    const max = parseInt(line.slice(colon + 1).trim());
+    if (name && !isNaN(max) && max > 0) limits[name] = max;
+  });
+  const usedBlocks = {};
+  scouts.forEach(s => { usedBlocks[s] = 0; });
+
+  // Round-robin queue. Each block: pick 6 from the front who are still under
+  // their limit, push them to the back. N >= 12 guarantees no back-to-back blocks.
+  let queue = [...scouts];
+  const blockScoutsList = [];
+  for (let B = 0; B < numBlocks; B++) {
+    const picked = [];
+    // Walk the queue in order, take scouts who still have capacity
+    const tempQueue = [...queue];
+    for (const scout of tempQueue) {
+      if (picked.length === 6) break;
+      if (!limits[scout] || usedBlocks[scout] < limits[scout]) picked.push(scout);
+    }
+    // If not enough scouts remain (everyone limited out), fill with '—'
+    while (picked.length < 6) picked.push('—');
+
+    picked.filter(s => s !== '—').forEach(s => { usedBlocks[s]++; });
+    blockScoutsList.push([...picked]);
+
+    // Rebuild queue: remove this block's scouts, re-add those who still have capacity
+    queue = queue.filter(s => !picked.includes(s));
+    picked.filter(s => s !== '—').forEach(s => {
+      if (!limits[s] || usedBlocks[s] < limits[s]) queue.push(s);
+      // else: limit hit — scout is done, stays out of queue
+    });
+  }
+
+  const rows = matchSchedule.map((match, matchIdx) => {
+    const blockIdx = Math.floor(matchIdx / blockSize);
+    const assignments = positions.map((pos, posIdx) => ({
+      pos,
+      scout: blockScoutsList[blockIdx][posIdx]
+    }));
+    return { match: match.match, blockIdx, assignments };
+  });
+
+  renderRotationOutput(rows, scouts, N < 12);
+}
+
+function renderRotationOutput(rows, scouts, warnOverlap) {
+  const output = document.getElementById('rotation-output');
+  if (!rows || !rows.length) return;
+
+  const thBase = 'padding:8px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);white-space:nowrap;text-align:center;';
+  const thMatch = thBase + 'background:var(--card2);color:var(--muted);';
+  const thBlue  = thBase + 'background:rgba(59,130,246,.15);color:#3b82f6;';
+  const thRed   = thBase + 'background:rgba(224,85,85,.15);color:#e05555;';
+
+  const tableRows = rows.map(row => {
+    const bAlpha = row.blockIdx % 2 === 0 ? '.07' : '.14';
+    const rAlpha = row.blockIdx % 2 === 0 ? '.07' : '.14';
+    const [b1,b2,b3,r1,r2,r3] = row.assignments;
+    const bc = (a) => `<td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center;background:rgba(59,130,246,${bAlpha});font-size:12px;color:var(--text);">${a.scout}</td>`;
+    const rc = (a) => `<td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center;background:rgba(224,85,85,${rAlpha});font-size:12px;color:var(--text);">${a.scout}</td>`;
+    return `<tr>
+      <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center;font-weight:700;color:var(--accent);font-size:12px;white-space:nowrap;">Q${row.match}</td>
+      ${bc(b1)}${bc(b2)}${bc(b3)}${rc(r1)}${rc(r2)}${rc(r3)}
+    </tr>`;
+  }).join('');
+
+  // Summary: match counts per scout
+  const counts = {};
+  scouts.forEach(s => { counts[s] = 0; });
+  rows.forEach(row => row.assignments.forEach(a => { counts[a.scout] = (counts[a.scout] || 0) + 1; }));
+  const summaryRows = scouts.map(s =>
+    `<tr><td style="padding:5px 8px;border-bottom:1px solid var(--border);font-size:13px;">${s}</td><td style="padding:5px 8px;border-bottom:1px solid var(--border);font-size:13px;text-align:center;font-weight:600;color:var(--accent);">${counts[s]}</td></tr>`
+  ).join('');
+
+  const warnBanner = warnOverlap
+    ? `<div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.4);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;font-size:12px;color:#ca8a04;">
+        ⚠️ Fewer than 12 scouts — some scouts may appear in back-to-back blocks. Add more scouts to fully avoid repeats.
+       </div>` : '';
+
+  output.innerHTML = `${warnBanner}
+    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr>
+          <th style="${thMatch}">Match</th>
+          <th style="${thBlue}">Blue 1</th>
+          <th style="${thBlue}">Blue 2</th>
+          <th style="${thBlue}">Blue 3</th>
+          <th style="${thRed}">Red 1</th>
+          <th style="${thRed}">Red 2</th>
+          <th style="${thRed}">Red 3</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <details style="margin-bottom:16px;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);padding:4px 0;">Match counts per scout</summary>
+      <div style="border-radius:var(--radius);border:1px solid var(--border);background:var(--card);margin-top:8px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>
+            <th style="padding:6px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);background:var(--card2);color:var(--muted);text-align:left;">Scout</th>
+            <th style="padding:6px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);background:var(--card2);color:var(--muted);text-align:center;">Matches</th>
+          </tr></thead>
+          <tbody>${summaryRows}</tbody>
+        </table>
+      </div>
+    </details>`;
+}
+
+// ── FEATURE 3: SCHEDULE ────────────────────────────────────────────────────
+let matchSchedule = [];
+let scheduleMyTeam = '';
+let schedFilter = 'all';
+
+function setSchedFilter(f) {
+  schedFilter = f;
+  ['all','mine'].forEach(x => document.getElementById('sched-filter-'+x)?.classList.toggle('active', x===f));
+  renderSchedule();
+}
+
+// ── SCHEDULE IMAGE OCR ──────────────────────────────────────────────────────
+function schedHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('sched-img-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) schedHandleFile(file);
+}
+
+function schedHandleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => schedExtractFromImage(ev.target.result);
+  reader.readAsDataURL(file);
+}
+
+document.addEventListener('paste', e => {
+  if (document.getElementById('page-import')?.classList.contains('active')) {
+    const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
+    if (item) {
+      e.preventDefault();
+      schedHandleFile(item.getAsFile());
+    }
+  }
+});
+
+async function schedExtractFromImage(dataUrl) {
+  const statusEl = document.getElementById('sched-img-status');
+  statusEl.innerHTML = '<span style="color:var(--muted)">Loading OCR engine…</span>';
+  try {
+    if (!window.Tesseract) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    statusEl.innerHTML = '<span style="color:var(--muted)">Reading image… 0%</span>';
+    const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text')
+          statusEl.innerHTML = `<span style="color:var(--muted)">Reading image… ${Math.round(m.progress * 100)}%</span>`;
+      }
+    });
+    const csv = parseOCRSchedule(text);
+    if (!csv) {
+      statusEl.innerHTML = '<span style="color:var(--red)">Could not find a schedule in the image. Try pasting the text manually.</span>';
+      return;
+    }
+    const ta = document.getElementById('schedule-paste');
+    if (ta) { ta.value = csv; parseSchedulePaste(); }
+    statusEl.innerHTML = '<span style="color:var(--green)">✅ Schedule extracted from screenshot</span>';
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+function parseOCRSchedule(text) {
+  const rows = [];
+  let autoMatch = 1;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^\D*(?:match|red|blue|alliance|team|qual)\D*$/i.test(line)) continue;
+    const nums = (line.match(/\d+/g) || []).map(Number);
+    if (nums.length < 6) continue;
+    let matchNum = autoMatch;
+    const qualM = line.match(/(?:qual(?:ification)?\.?\s*|^q\s*)(\d+)/i);
+    if (qualM) {
+      matchNum = parseInt(qualM[1]);
+      // Strip ALL leading occurrences of the match number from nums.
+      // The OCR may produce "Qualification 1 ... 1 ..." where the "1" appears
+      // twice (once from the label text, once from a separate match-number column).
+      while (nums.length > 6 && nums[0] === matchNum) nums.shift();
+    } else if (nums.length >= 7) {
+      matchNum = nums[0];
+      nums.shift();
+    }
+    const teams = nums.slice(0, 6);
+    if (teams.length < 6) continue;
+    rows.push([matchNum, ...teams].join(','));
+    autoMatch = matchNum + 1;
+  }
+  if (!rows.length) return null;
+  return 'Match,Red 1,Red 2,Red 3,Blue 1,Blue 2,Blue 3\n' + rows.join('\n');
+}
+
+function parseSchedulePaste() {
+  const text = document.getElementById('schedule-paste')?.value || '';
+  const statusEl = document.getElementById('schedule-status');
+  if (!text.trim()) {
+    matchSchedule = [];
+    localStorage.removeItem('frc_schedule');
+    localStorage.removeItem('frc_schedule_raw');
+    if (statusEl) statusEl.innerHTML = '';
+    renderSchedule();
+    return;
+  }
+
+  const lines = text.trim().replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l => l.trim());
+  if (lines.length < 1) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">No data found.</span>'; return; }
+
+  // Auto-detect delimiter: tab if first line has tabs, else comma
+  const delim = lines[0].includes('\t') ? '\t' : ',';
+  const splitLine = l => delim === '\t' ? l.split('\t').map(v => v.trim()) : parseCSVLine(l);
+
+  // Detect whether first line is a header (contains text like match/red/blue/qual)
+  // or a data row (all numbers). Handle both cases.
+  const firstVals = splitLine(lines[0]);
+  const isHeaderRow = firstVals.some(v => /match|red|blue|qual|alliance|team/i.test(v));
+
+  let dataLines, matchCol, r1, r2, r3, b1, b2, b3;
+
+  if (isHeaderRow) {
+    const headers = firstVals.map(h => h.toLowerCase().replace(/[^a-z0-9]/g,' ').trim());
+    const find = (...patterns) => {
+      for (const p of patterns) {
+        const i = headers.findIndex(h => h.includes(p));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    matchCol = find('match number','match num','match #','match','qualification','qual','#');
+    r1 = find('red 1','red1','red alliance 1','red team 1');
+    r2 = find('red 2','red2','red alliance 2','red team 2');
+    r3 = find('red 3','red3','red alliance 3','red team 3');
+    b1 = find('blue 1','blue1','blue alliance 1','blue team 1');
+    b2 = find('blue 2','blue2','blue alliance 2','blue team 2');
+    b3 = find('blue 3','blue3','blue alliance 3','blue team 3');
+    // Positional fallback for r3/b3 if not found by name
+    if (r3 < 0 && r2 >= 0) r3 = r2 + 1;
+    if (b3 < 0 && b2 >= 0) b3 = b2 + 1;
+    dataLines = lines.slice(1);
+  } else {
+    // No header — assume: Match, Red1, Red2, Red3, Blue1, Blue2, Blue3
+    matchCol = 0; r1 = 1; r2 = 2; r3 = 3; b1 = 4; b2 = 5; b3 = 6;
+    dataLines = lines;
+  }
+
+  if (r1 < 0 || b1 < 0) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">Couldn\'t detect Red/Blue columns. Make sure your header includes "Red 1", "Blue 1", etc.</span>';
+    return;
+  }
+
+  const parseRows = (ir1, ir2, ir3, ib1, ib2, ib3) => dataLines.map((line, rowIdx) => {
+    const vals = splitLine(line);
+    const get = i => {
+      if (i < 0 || i >= vals.length) return '';
+      const v = (vals[i] || '').replace(/^frc/i, '').trim();
+      return /^\d+$/.test(v) ? v : '';
+    };
+    const matchRaw = matchCol >= 0 ? (vals[matchCol] || '') : '';
+    const matchNum = parseInt(matchRaw) || parseInt((matchRaw.match(/\d+/) || [])[0]) || (rowIdx + 1);
+    return {
+      match: matchNum,
+      red: [get(ir1), get(ir2), get(ir3)].filter(Boolean),
+      blue: [get(ib1), get(ib2), get(ib3)].filter(Boolean),
+    };
+  }).filter(m => m.red.length || m.blue.length);
+
+  let rawRows = parseRows(r1, r2, r3, b1, b2, b3);
+
+  // Filter rows that look like alliance-slot position markers (all 6 values are 1-6)
+  // e.g. some schedule UIs show "1 2 3 | 1 2 3" as a sub-header
+  const filtered = rawRows.filter(m => {
+    const all = [...m.red, ...m.blue].map(Number);
+    if (all.length === 6 && all.every(t => t >= 1 && t <= 6)) return false;
+    return true;
+  });
+
+  // Deduplicate: if same match number appears twice keep the row with the
+  // higher team-number sum (real FRC team numbers >> slot-marker numbers)
+  const matchMap = new Map();
+  filtered.forEach(m => {
+    const existing = matchMap.get(m.match);
+    if (!existing) {
+      matchMap.set(m.match, m);
+    } else {
+      const sumE = [...existing.red, ...existing.blue].reduce((s,t) => s + (parseInt(t)||0), 0);
+      const sumN = [...m.red, ...m.blue].reduce((s,t) => s + (parseInt(t)||0), 0);
+      if (sumN > sumE) matchMap.set(m.match, m);
+    }
+  });
+  matchSchedule = [...matchMap.values()].sort((a,b) => a.match - b.match);
+
+  localStorage.setItem('frc_schedule', JSON.stringify(matchSchedule));
+  localStorage.setItem('frc_schedule_raw', text);
+
+  // Detect if Blue 3 is missing from all/most rows (happens when OCR bug
+  // ate one team slot — the lost data cannot be recovered from the saved CSV)
+  const missingBlue3 = matchSchedule.filter(m => m.blue.length < 3).length;
+  const truncated = missingBlue3 > matchSchedule.length * 0.5;
+
+  const dbgCols = `delim:${delim==='\t'?'tab':'comma'} header:${isHeaderRow} match:${matchCol} R:${r1},${r2},${r3} B:${b1},${b2},${b3}`;
+  const statusHTML = truncated
+    ? `<span style="color:var(--red)">⚠️ Schedule is missing Blue 3 teams — the saved data was corrupted. Please re-scan or re-paste your schedule.</span>`
+    : `<span style="color:var(--green)">✅ ${matchSchedule.length} matches loaded</span>`;
+  if (statusEl) statusEl.innerHTML =
+    statusHTML +
+    `<details style="margin-top:6px;"><summary style="color:var(--muted);font-size:11px;cursor:pointer;">Show parsed data (click to verify)</summary>`+
+    `<pre style="font-size:10px;color:var(--muted);margin:4px 0 0;">${dbgCols}\n${matchSchedule.slice(0,5).map(m=>`Q${m.match} R[${m.red.join(',')}] B[${m.blue.join(',')}]`).join('\n')}</pre></details>`;
+  renderSchedule();
+}
+
+function renderSchedule() {
+  const list = document.getElementById('schedule-list');
+  if (!list) return;
+
+  if (!matchSchedule.length) {
+    list.innerHTML = '<div class="empty"><p>Import a match schedule CSV on the Import tab</p></div>';
+    return;
+  }
+
+  let matches = matchSchedule;
+  if (schedFilter === 'mine' && scheduleMyTeam) {
+    matches = matches.filter(m => m.red.includes(scheduleMyTeam) || m.blue.includes(scheduleMyTeam));
+  }
+
+  list.innerHTML = matches.map(m => {
+    const myOnRed = scheduleMyTeam && m.red.includes(scheduleMyTeam);
+    const myOnBlue = scheduleMyTeam && m.blue.includes(scheduleMyTeam);
+    const isMyMatch = myOnRed || myOnBlue;
+
+    const teamPill = (t, alliance) => {
+      const isMe = t === scheduleMyTeam;
+      const flag = flagEmoji(t);
+      const status = teamStatus[t];
+      const epa = teamStats[t]?.epa;
+      const color = alliance === 'red' ? '#e05555' : '#3b82f6';
+      return `<div style="background:var(--card2);border:1px solid ${isMe ? color : 'var(--border)'};border-radius:8px;padding:5px 8px;min-width:0;flex:1;text-align:center">
+        <div style="font-size:13px;font-weight:${isMe?'800':'700'};color:${isMe?color:'var(--text)'}">${flag}${t}</div>
+        ${epa !== undefined ? `<div style="font-size:10px;color:var(--muted)">${epa} EPA</div>` : ''}
+        ${status === 'taken' ? '<div style="font-size:9px;color:var(--muted)">TAKEN</div>' : status === 'dnp' ? '<div style="font-size:9px;color:var(--red)">DNP</div>' : ''}
+      </div>`;
+    };
+
+    return `
+      <div style="background:var(--card);border:1px solid ${isMyMatch?'var(--accent)':'var(--border)'};border-radius:var(--radius);padding:10px 12px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;color:${isMyMatch?'var(--accent)':'var(--muted)'};margin-bottom:8px">
+          Q${m.match}${isMyMatch ? ' ← YOUR MATCH' : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div>
+            <div style="font-size:9px;color:#e05555;font-weight:700;margin-bottom:4px;text-transform:uppercase">Red</div>
+            <div style="display:flex;flex-direction:column;gap:3px">${m.red.map(t => teamPill(t,'red')).join('')}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:#3b82f6;font-weight:700;margin-bottom:4px;text-transform:uppercase">Blue</div>
+            <div style="display:flex;flex-direction:column;gap:3px">${m.blue.map(t => teamPill(t,'blue')).join('')}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+loadFromCache();
+loadFlags();
+try { teamStatus = JSON.parse(localStorage.getItem('frc_team_status') || '{}'); } catch(e) { teamStatus = {}; }
+picklistMyTeam = localStorage.getItem('frc_picklist_myteam') || '';
+if (picklistMyTeam) { const _pli = document.getElementById('picklist-my-team'); if (_pli) _pli.value = picklistMyTeam; }
+// Always re-parse from raw text so any parser improvements take effect immediately
+const _savedScheduleRaw = localStorage.getItem('frc_schedule_raw');
+if (_savedScheduleRaw) {
+  const _ta = document.getElementById('schedule-paste');
+  if (_ta) { _ta.value = _savedScheduleRaw; parseSchedulePaste(); }
+} else {
+  try { matchSchedule = JSON.parse(localStorage.getItem('frc_schedule') || '[]'); } catch(e) { matchSchedule = []; }
+}
+</script>
+</body>
+</html>
