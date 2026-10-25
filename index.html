@@ -286,12 +286,21 @@
   <div style="padding:0 4px">
     <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
       <input id="schedule-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Your team #"
-        style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;"
+        style="flex:1 1 80px;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;"
         oninput="scheduleMyTeam=this.value.trim();renderSchedule()">
-      <div class="selector-bar" style="margin:0">
+      <div class="selector-bar" style="margin:0;flex-shrink:0">
         <div class="selector-chip active" id="sched-filter-all" onclick="setSchedFilter('all')">All</div>
         <div class="selector-chip" id="sched-filter-mine" onclick="setSchedFilter('mine')">Mine</div>
+        <div class="selector-chip" id="sched-filter-compare" onclick="setSchedFilter('compare')">Compare</div>
       </div>
+    </div>
+    <div id="sched-compare-panel" style="display:none;gap:8px;margin-bottom:10px">
+      <input id="sched-cmp-a" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team A"
+        style="flex:1;min-width:0;background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:8px 12px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;text-align:center;"
+        oninput="this.value=this.value.replace(/\D/g,'');schedCmpA=this.value;renderSchedule()">
+      <input id="sched-cmp-b" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team B"
+        style="flex:1;min-width:0;background:var(--card);border:1px solid var(--accent2);border-radius:10px;padding:8px 12px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;text-align:center;"
+        oninput="this.value=this.value.replace(/\D/g,'');schedCmpB=this.value;renderSchedule()">
     </div>
     <div id="schedule-list"></div>
   </div>
@@ -657,19 +666,28 @@
 <script>
 // ── STORAGE FALLBACK ───────────────────────────────────────────────────────
 // Some views (data: URLs, embedded browsers, private modes) block localStorage and
-// throw on access. Fall back to an in-memory store so the app still works; in that
-// mode nothing persists after the page closes.
-(function () {
-  try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return; } catch (e) {}
+// throw on access, and a full store throws on writes. Use real storage whenever it
+// works; any call that fails falls back to memory (lasts until the page closes).
+function makeSafeStorage(getReal) {
   const mem = {};
-  try {
-    Object.defineProperty(window, 'localStorage', { configurable: true, value: {
-      getItem: k => (k in mem ? mem[k] : null),
-      setItem: (k, v) => { mem[k] = String(v); },
-      removeItem: k => { delete mem[k]; }
-    }});
-  } catch (e) {}
-})();
+  const real = () => { try { return getReal(); } catch (e) { return null; } };
+  return {
+    getItem(k) {
+      if (k in mem) return mem[k];
+      try { const v = real().getItem(k); return v === undefined ? null : v; } catch (e) { return null; }
+    },
+    setItem(k, v) {
+      try { real().setItem(k, v); delete mem[k]; } catch (e) { mem[k] = String(v); }
+    },
+    removeItem(k) {
+      delete mem[k];
+      try { real().removeItem(k); } catch (e) {}
+    }
+  };
+}
+let nativeStorage = null;
+try { nativeStorage = window.localStorage; } catch (e) {} // throws when storage is blocked
+try { Object.defineProperty(window, 'localStorage', { configurable: true, value: makeSafeStorage(() => nativeStorage) }); } catch (e) {}
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let rawData = [];
@@ -2720,11 +2738,67 @@ function renderRotationOutput(rows, scouts, warnOverlap) {
 let matchSchedule = [];
 let scheduleMyTeam = '';
 let schedFilter = 'all';
+let schedCmpA = '', schedCmpB = '';
 
 function setSchedFilter(f) {
   schedFilter = f;
-  ['all','mine'].forEach(x => document.getElementById('sched-filter-'+x)?.classList.toggle('active', x===f));
+  ['all','mine','compare'].forEach(x => document.getElementById('sched-filter-'+x)?.classList.toggle('active', x===f));
+  const panel = document.getElementById('sched-compare-panel');
+  if (panel) panel.style.display = f === 'compare' ? 'flex' : 'none';
+  if (f === 'compare' && !schedCmpA && scheduleMyTeam) {
+    schedCmpA = scheduleMyTeam;
+    document.getElementById('sched-cmp-a').value = scheduleMyTeam;
+  }
   renderSchedule();
+}
+
+// Two teams' schedules side by side: one row per match either team plays
+function renderScheduleCompare() {
+  const list = document.getElementById('schedule-list');
+  const a = schedCmpA, b = schedCmpB;
+  const msg = t => `<div class="empty"><p>${t}</p></div>`;
+  if (!a || !b) { list.innerHTML = msg('Enter two team numbers to compare their schedules'); return; }
+  if (a === b) { list.innerHTML = msg('Pick two different teams'); return; }
+
+  const role = (team, m) => {
+    if (m.red.includes(team))  return { color: '#e05555', partners: m.red.filter(t => t !== team),  opps: m.blue };
+    if (m.blue.includes(team)) return { color: '#3b82f6', partners: m.blue.filter(t => t !== team), opps: m.red };
+    return null;
+  };
+  const rows = matchSchedule.map(m => ({ m, ra: role(a, m), rb: role(b, m) })).filter(r => r.ra || r.rb);
+  const nA = rows.filter(r => r.ra).length, nB = rows.filter(r => r.rb).length;
+  if (!nA || !nB) {
+    list.innerHTML = msg(`${!nA ? 'Team ' + a : ''}${!nA && !nB ? ' and ' : ''}${!nB ? 'Team ' + b : ''} not found in the schedule`);
+    return;
+  }
+  const together = rows.filter(r => r.ra && r.rb && r.ra.color === r.rb.color).length;
+  const against  = rows.filter(r => r.ra && r.rb && r.ra.color !== r.rb.color).length;
+
+  const head = (team, color) => {
+    const epa = teamStats[team]?.epa;
+    return `<div style="text-align:center;background:var(--card);border:1px solid ${color};border-radius:10px;padding:8px 4px">
+      <div style="font-size:16px;font-weight:800;color:${color}">${flagEmoji(team)}${team}</div>
+      <div style="font-size:10px;color:var(--muted)">${epa !== undefined ? epa + ' EPA · ' : ''}${team === a ? nA : nB} matches</div>
+    </div>`;
+  };
+  // Same match card as the All / Mine views, one per team; WITH / VS shows when both play
+  const tag = r => !(r.ra && r.rb) ? ''
+    : r.ra.color === r.rb.color
+      ? ' · <span style="color:var(--green)">WITH</span>'
+      : ' · <span style="color:var(--yellow)">VS</span>';
+  const cell = (r, team, plays, accent) => plays
+    ? schedMatchCard(r.m, team, { compact: true, accent, label: `Q${r.m.match}${tag(r)}` })
+    : `<div style="border:1px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;padding:8px;text-align:center">Q${r.m.match} · not playing</div>`;
+
+  const grid = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;';
+  list.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin:0 2px 8px">
+      Together in <strong style="color:var(--green)">${together}</strong> · facing each other in <strong style="color:var(--yellow)">${against}</strong>
+    </div>
+    <div style="${grid}margin-bottom:6px">${head(a, 'var(--accent)')}${head(b, 'var(--accent2)')}</div>
+    ${rows.map(r => `<div style="${grid}margin-bottom:6px">
+      ${cell(r, a, !!r.ra, 'var(--accent)')}${cell(r, b, !!r.rb, 'var(--accent2)')}
+    </div>`).join('')}`;
 }
 
 // ── SCHEDULE IMAGE OCR ──────────────────────────────────────────────────────
@@ -2799,9 +2873,10 @@ function parseOCRSchedule(text) {
     const qualM = line.match(/(?:qual(?:ification)?\.?\s*|^q\s*)(\d+)/i);
     if (qualM) {
       matchNum = parseInt(qualM[1]);
-      // Strip ALL leading occurrences of the match number from nums.
-      // The OCR may produce "Qualification 1 ... 1 ..." where the "1" appears
-      // twice (once from the label text, once from a separate match-number column).
+      // The first number is the one in the "Qualification N" label itself — always drop it,
+      // otherwise a row with a missing team would read the match number as a team.
+      if (nums[0] === matchNum) nums.shift();
+      // The OCR may also repeat the match number from a separate match-number column.
       while (nums.length > 6 && nums[0] === matchNum) nums.shift();
     } else if (nums.length >= 7) {
       matchNum = nums[0];
@@ -2942,49 +3017,54 @@ function renderSchedule() {
     return;
   }
 
+  if (schedFilter === 'compare') { renderScheduleCompare(); return; }
+
   let matches = matchSchedule;
   if (schedFilter === 'mine' && scheduleMyTeam) {
     matches = matches.filter(m => m.red.includes(scheduleMyTeam) || m.blue.includes(scheduleMyTeam));
   }
 
-  list.innerHTML = matches.map(m => {
-    const myOnRed = scheduleMyTeam && m.red.includes(scheduleMyTeam);
-    const myOnBlue = scheduleMyTeam && m.blue.includes(scheduleMyTeam);
-    const isMyMatch = myOnRed || myOnBlue;
+  list.innerHTML = matches.map(m => schedMatchCard(m, scheduleMyTeam)).join('');
+}
 
-    const teamPill = (t, alliance) => {
-      const isMe = t === scheduleMyTeam;
-      const flag = flagEmoji(t);
-      const status = teamStatus[t];
-      const epa = teamStats[t]?.epa;
-      const color = alliance === 'red' ? '#e05555' : '#3b82f6';
-      return `<div style="background:var(--card2);border:1px solid ${isMe ? color : 'var(--border)'};border-radius:8px;padding:5px 8px;min-width:0;flex:1;text-align:center">
-        <div style="font-size:13px;font-weight:${isMe?'800':'700'};color:${isMe?color:'var(--text)'}">${flag}${t}</div>
-        ${epa !== undefined ? `<div style="font-size:10px;color:var(--muted)">${epa} EPA</div>` : ''}
-        ${status === 'taken' ? '<div style="font-size:9px;color:var(--muted)">TAKEN</div>' : status === 'dnp' ? '<div style="font-size:9px;color:var(--red)">DNP</div>' : ''}
-      </div>`;
-    };
+// One match card (Red / Blue team pills). `focus` is the team to highlight.
+// opts: compact (narrow two-column layout), label (header text), accent (highlight color)
+function schedMatchCard(m, focus, opts = {}) {
+  const compact = !!opts.compact;
+  const accent = opts.accent || 'var(--accent)';
+  const isFocusMatch = !!focus && (m.red.includes(focus) || m.blue.includes(focus));
+  const label = opts.label !== undefined ? opts.label : `Q${m.match}${isFocusMatch ? ' ← YOUR MATCH' : ''}`;
 
-    return `
-      <div style="background:var(--card);border:1px solid ${isMyMatch?'var(--accent)':'var(--border)'};border-radius:var(--radius);padding:10px 12px;margin-bottom:8px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-size:11px;font-weight:700;color:${isMyMatch?'var(--accent)':'var(--muted)'}">
-            Q${m.match}${isMyMatch ? ' ← YOUR MATCH' : ''}
-          </div>
-          <button onclick="predictFromSchedule('${m.match}')" style="background:var(--card2);border:1px solid var(--border);color:var(--accent);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">Predict →</button>
+  const teamPill = (t, alliance) => {
+    const isMe = t === focus;
+    const flag = flagEmoji(t);
+    const status = teamStatus[t];
+    const epa = teamStats[t]?.epa;
+    const color = alliance === 'red' ? '#e05555' : '#3b82f6';
+    return `<div style="background:var(--card2);border:1px solid ${isMe ? color : 'var(--border)'};border-radius:8px;padding:${compact ? '4px 2px' : '5px 8px'};min-width:0;flex:1;text-align:center">
+      <div style="font-size:${compact ? 12 : 13}px;font-weight:${isMe?'800':'700'};color:${isMe?color:'var(--text)'}">${flag}${t}</div>
+      ${epa !== undefined ? `<div style="font-size:${compact ? 9 : 10}px;color:var(--muted)">${epa} EPA</div>` : ''}
+      ${status === 'taken' ? '<div style="font-size:9px;color:var(--muted)">TAKEN</div>' : status === 'dnp' ? '<div style="font-size:9px;color:var(--red)">DNP</div>' : ''}
+    </div>`;
+  };
+
+  return `
+    <div style="background:var(--card);border:1px solid ${isFocusMatch ? accent : 'var(--border)'};border-radius:var(--radius);padding:${compact ? '8px' : '10px 12px'};margin-bottom:${compact ? 0 : 8}px;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:${compact ? 6 : 8}px">
+        <div style="font-size:11px;font-weight:700;color:${isFocusMatch ? accent : 'var(--muted)'}">${label}</div>
+        <button onclick="predictFromSchedule('${m.match}')" style="background:var(--card2);border:1px solid var(--border);color:var(--accent);border-radius:8px;padding:${compact ? '3px 6px' : '4px 10px'};font-size:${compact ? 10 : 11}px;font-weight:700;cursor:pointer;white-space:nowrap">${compact ? 'Predict' : 'Predict →'}</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:${compact ? 4 : 6}px">
+        <div>
+          <div style="font-size:9px;color:#e05555;font-weight:700;margin-bottom:4px;text-transform:uppercase">Red</div>
+          <div style="display:flex;flex-direction:column;gap:3px">${m.red.map(t => teamPill(t,'red')).join('')}</div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          <div>
-            <div style="font-size:9px;color:#e05555;font-weight:700;margin-bottom:4px;text-transform:uppercase">Red</div>
-            <div style="display:flex;flex-direction:column;gap:3px">${m.red.map(t => teamPill(t,'red')).join('')}</div>
-          </div>
-          <div>
-            <div style="font-size:9px;color:#3b82f6;font-weight:700;margin-bottom:4px;text-transform:uppercase">Blue</div>
-            <div style="display:flex;flex-direction:column;gap:3px">${m.blue.map(t => teamPill(t,'blue')).join('')}</div>
-          </div>
+        <div>
+          <div style="font-size:9px;color:#3b82f6;font-weight:700;margin-bottom:4px;text-transform:uppercase">Blue</div>
+          <div style="display:flex;flex-direction:column;gap:3px">${m.blue.map(t => teamPill(t,'blue')).join('')}</div>
         </div>
-      </div>`;
-  }).join('');
+      </div>
+    </div>`;
 }
 
 // Fill the Predict tab with a scheduled match's alliances and switch to it
