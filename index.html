@@ -655,6 +655,22 @@
 </div>
 
 <script>
+// ── STORAGE FALLBACK ───────────────────────────────────────────────────────
+// Some views (data: URLs, embedded browsers, private modes) block localStorage and
+// throw on access. Fall back to an in-memory store so the app still works; in that
+// mode nothing persists after the page closes.
+(function () {
+  try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return; } catch (e) {}
+  const mem = {};
+  try {
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+      getItem: k => (k in mem ? mem[k] : null),
+      setItem: (k, v) => { mem[k] = String(v); },
+      removeItem: k => { delete mem[k]; }
+    }});
+  } catch (e) {}
+})();
+
 // ── STATE ──────────────────────────────────────────────────────────────────
 let rawData = [];
 let loadedFiles = {}; // { filename: { rows, text } }
@@ -2775,7 +2791,9 @@ function parseOCRSchedule(text) {
     const line = raw.trim();
     if (!line) continue;
     if (/^\D*(?:match|red|blue|alliance|team|qual)\D*$/i.test(line)) continue;
-    const nums = (line.match(/\d+/g) || []).map(Number);
+    // Drop start times ("10:42 AM") and dates ("3/28") so they aren't read as team numbers
+    const cleaned = line.replace(/\b\d{1,2}:\d{2}\s*(?:[ap]\.?m\.?)?/gi, ' ').replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, ' ');
+    const nums = (cleaned.match(/\d+/g) || []).map(Number);
     if (nums.length < 6) continue;
     let matchNum = autoMatch;
     const qualM = line.match(/(?:qual(?:ification)?\.?\s*|^q\s*)(\d+)/i);
@@ -2949,8 +2967,11 @@ function renderSchedule() {
 
     return `
       <div style="background:var(--card);border:1px solid ${isMyMatch?'var(--accent)':'var(--border)'};border-radius:var(--radius);padding:10px 12px;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:700;color:${isMyMatch?'var(--accent)':'var(--muted)'};margin-bottom:8px">
-          Q${m.match}${isMyMatch ? ' ← YOUR MATCH' : ''}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:700;color:${isMyMatch?'var(--accent)':'var(--muted)'}">
+            Q${m.match}${isMyMatch ? ' ← YOUR MATCH' : ''}
+          </div>
+          <button onclick="predictFromSchedule('${m.match}')" style="background:var(--card2);border:1px solid var(--border);color:var(--accent);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">Predict →</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
           <div>
@@ -2966,7 +2987,19 @@ function renderSchedule() {
   }).join('');
 }
 
-// ── INIT ───────────────────────────────────────────────────────────────────
+// Fill the Predict tab with a scheduled match's alliances and switch to it
+function predictFromSchedule(matchNum) {
+  const m = matchSchedule.find(x => String(x.match) === String(matchNum));
+  if (!m) return;
+  ['red', 'blue'].forEach(color => {
+    for (let i = 0; i < 3; i++) document.getElementById(color + (i + 1)).value = m[color][i] || '';
+  });
+  clearPrediction();
+  showPage('predict');
+  window.scrollTo(0, 0);
+}
+
+// ── INIT───────────────────────────────────────────────────────────────────
 loadFromCache();
 loadFlags();
 try { teamStatus = JSON.parse(localStorage.getItem('frc_team_status') || '{}'); } catch(e) { teamStatus = {}; }
