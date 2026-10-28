@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>test harness</title></head><body><script>
+// Loads the real app (../index.html) into this page, then runs one test case against it.
+//   harness.html?case=03_fuzz&data=file:///C:/path/to/scouting/csvs
+// A case is a file in cases/ containing the BODY of a function(t){...}. Its first lines may hold
+//   // variant: nochart | syntax | missingpart      (load a broken copy of the app on purpose)
+// t.check(name, ok, detail) records a result; t.out is free-form extra output. The result is written
+// as JSON into a hidden element with id harness-out, which run.ps1 reads.
+(function () {
+  var q = new URLSearchParams(location.search);
+  var name = q.get('case'), dataDir = (q.get('data') || '').replace(/\/?$/, '/');
+  try { localStorage.clear(); } catch (e) {}
+  function load(u) { var r = new XMLHttpRequest(); r.open('GET', u, false); r.send(); if (r.status && r.status >= 400) throw new Error('cannot load ' + u); return r.responseText; }
+  var appUrl = new URL('../index.html', location.href).href, baseHref = new URL('../', location.href).href;
+  var app = load(appUrl), src = load('cases/' + name + '.js');
+  var variant = (src.match(/^\/\/ variant: (\w+)/m) || [])[1] || '';
+  src = load('lib.js') + '\n' + src;          // shared helpers (synthetic CSV builders...) are in scope for every case
+  if (variant === 'nochart') app = app.replace(/<script src="chart\.umd\.min\.js"><\/script>/, '');
+  if (variant === 'missingpart') app = app.replace(/<script src="js\/rotation\.js[^"]*"><\/script>/, '');       // a file that did not load (stale cache, bad deploy)
+  if (variant === 'syntax') app = app.replace('<body>', '<body><scr' + 'ipt>function broken( {{{ ;</scr' + 'ipt>');       // a script that cannot be parsed
+
+  var runner = '<' + 'script>(' + function (CASE, DATA_DIR, FIX_DIR) {
+    var results = [], out = {}, errors = [];
+    window.addEventListener('error', function (e) { errors.push(e.message); });
+    var t = {
+      out: out, errors: errors, dataDir: DATA_DIR, fixDir: FIX_DIR,
+      check: function (n, ok, detail) { results.push({ name: n, pass: !!ok, detail: detail === undefined ? '' : String(detail) }); },
+      skip: function (why) { out.skipped = why; },
+      get: function (u) { var r = new XMLHttpRequest(); r.open('GET', u, false); r.send(); if (r.status && r.status >= 400) throw new Error('cannot load ' + u); return r.responseText; },
+      hasData: function (file) { try { var r = new XMLHttpRequest(); r.open('GET', DATA_DIR + file, false); r.send(); return r.status < 400 && r.responseText.length > 0; } catch (e) { return false; } },
+      data: function (file) { return t.get(DATA_DIR + file); },
+      fixture: function (file) { return t.get(FIX_DIR + file); },
+      text: function (id) { var el = document.getElementById(id); return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; },
+    };
+    function finish() {
+      var pre = document.createElement('pre'); pre.id = 'harness-out'; pre.style.display = 'none';
+      pre.textContent = JSON.stringify({ case: CASE, results: results, out: out, pageErrors: errors });
+      document.body.appendChild(pre);
+    }
+    function run() {
+      try { if (window.Chart) Chart.defaults.animation = false; CASE_BODY(t); }
+      catch (e) { results.push({ name: 'case ran without throwing', pass: false, detail: e.message + ' | ' + (e.stack || '').split('\n').slice(0, 3).join(' / ') }); }
+      setTimeout(finish, 350);          // let timers the case started (banner, working... messages) settle
+    }
+    if (document.readyState === 'complete') setTimeout(run, 50); else window.addEventListener('load', function () { setTimeout(run, 50); });
+  }.toString().replace('CASE_BODY(t);', function () { return '(function (t) {\n' + src + '\n})(t);'; }) + ')(' + JSON.stringify(name) + ',' + JSON.stringify(dataDir) + ',' + JSON.stringify(new URL('fixtures/', location.href).href) + ');<' + '/script>';
+
+  var html = app.replace('<head>', '<head><base href="' + baseHref + '">').replace('</body>', function () { return runner + '</body>'; });
+  document.open(); document.write(html); document.close();
+})();
+</script></body></html>
