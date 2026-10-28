@@ -7,6 +7,70 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Torch Analysis</title>
 <script src="chart.umd.min.js"></script>
+<script>
+// Shows script errors on screen, so a button that stops working is never silent. This is its own script (and
+// runs first) so it still works if the main app script fails to load or has a syntax error.
+(function () {
+  var box = null, list = null, title = null, seen = {}, total = 0, bad = 0;
+  function build() {
+    if (box) return true;
+    if (!document.body) return false;
+    box = document.createElement('div');
+    box.id = 'error-banner';
+    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:1000;background:#3a1414;border-bottom:2px solid #e05555;color:#f5d0d0;font:13px/1.45 -apple-system,system-ui,sans-serif;padding:10px 44px 10px 14px;max-height:45vh;overflow:auto;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+    title = document.createElement('div'); title.style.cssText = 'font-weight:700;color:#ff9a9a;margin-bottom:4px';
+    list = document.createElement('div');
+    var hint = document.createElement('div'); hint.style.cssText = 'margin-top:6px;font-size:12px;color:#d9a8a8';
+    hint.textContent = 'If something on the page is not working, this is why. Send this message to whoever looks after the app.';
+    var copy = document.createElement('button'); copy.textContent = 'Copy details';
+    copy.style.cssText = 'margin:6px 8px 0 0;background:#552020;border:1px solid #8a3a3a;color:#f5d0d0;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer';
+    copy.onclick = function () {
+      var text = 'Torch Analysis errors\n' + list.innerText + '\n' + navigator.userAgent;
+      try { navigator.clipboard.writeText(text); copy.textContent = 'Copied'; } catch (e) { copy.textContent = 'Select the text and copy it'; }
+    };
+    var close = document.createElement('button'); close.textContent = '✕'; close.title = 'Hide';
+    close.style.cssText = 'position:absolute;top:6px;right:8px;background:none;border:none;color:#f5d0d0;font-size:18px;cursor:pointer;padding:4px 8px';
+    close.onclick = function () { box.style.display = 'none'; };
+    box.appendChild(title); box.appendChild(list); box.appendChild(hint); box.appendChild(copy); box.appendChild(close);
+    document.body.appendChild(box);
+    return true;
+  }
+  function report(kind, msg, where) {
+    var key = kind + '|' + msg + '|' + where;
+    if (seen[key]) { seen[key]++; return; }
+    seen[key] = 1; total++; if (kind === 'error') bad++;
+    var go = function () {
+      if (!build()) return;
+      var row = document.createElement('div'); row.style.cssText = 'padding:3px 0;border-top:1px solid #5a2a2a;word-break:break-word';
+      row.textContent = (kind === 'error' ? '✖ ' : '⚠ ') + msg + (where ? '  (' + where + ')' : '');
+      list.appendChild(row);
+      title.textContent = bad ? (bad === 1 ? 'Something went wrong' : bad + ' things went wrong') : 'Heads up';
+      box.style.display = 'block';
+    };
+    if (document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+  }
+  var base = function (u) { return String(u || '').split('/').pop().split('?')[0]; };
+  window.addEventListener('error', function (e) {
+    if (e.target && e.target !== window) return;                       // a file that failed to load is handled below
+    var m = e.message || 'Unknown error';
+    if (/ResizeObserver loop/.test(m)) return;                         // harmless browser notice
+    report('error', m.replace(/^Uncaught\s*/, ''), e.filename ? base(e.filename) + (e.lineno ? ' line ' + e.lineno : '') : '');
+  });
+  window.addEventListener('error', function (e) {                      // capture phase: <script>/<img> files that failed to load
+    var t = e.target;
+    if (!t || t === window || t.tagName !== 'SCRIPT') return;
+    var src = base(t.src);
+    if (/chart\.umd/.test(src) || /tesseract/i.test(src)) return;      // reported below / by the screenshot reader itself
+    report('error', 'A required file failed to load: ' + src, '');
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason; report('error', (r && r.message) ? r.message : String(r), 'a background task');
+  });
+  window.addEventListener('load', function () {
+    if (typeof Chart === 'undefined') report('warn', 'The chart library (chart.umd.min.js) did not load, so charts will not appear. Predictions, rankings and everything else still work. If you opened a copy of this file, keep chart.umd.min.js in the same folder.', '');
+  });
+})();
+</script>
 <style>
   :root {
     --bg: #131313;
@@ -266,7 +330,7 @@
       <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Your Team</div>
       <input id="picklist-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Enter your team number"
         style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-size:16px;font-weight:700;outline:none;-webkit-appearance:none;"
-        oninput="picklistMyTeam=this.value.trim();localStorage.setItem('frc_picklist_myteam',picklistMyTeam);renderPicklist()">
+        oninput="setMyTeam(this.value)">
     </div>
     <div id="picklist-suggestion" style="display:none;background:var(--card);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;"></div>
     <div class="selector-bar" style="margin-bottom:10px">
@@ -274,6 +338,11 @@
       <div class="selector-chip" id="pl-filter-available" onclick="setPlFilter('available')">Available</div>
       <div class="selector-chip" id="pl-filter-taken" onclick="setPlFilter('taken')">Taken</div>
       <div class="selector-chip" id="pl-filter-dnp" onclick="setPlFilter('dnp')">DNP</div>
+      <div class="selector-chip" id="pl-filter-mine" onclick="setPlFilter('mine')">Mine</div>
+    </div>
+    <div class="selector-bar" style="margin-bottom:10px">
+      <div class="selector-chip active" id="pl-sort-fit" onclick="setPlSort('fit')">Best fit for my alliance</div>
+      <div class="selector-chip" id="pl-sort-epa" onclick="setPlSort('epa')">Highest EPA</div>
     </div>
     <div id="picklist-list"></div>
     <button class="btn secondary" onclick="resetPicklistStatuses()" style="margin-top:12px;width:100%">Reset All Statuses</button>
@@ -287,12 +356,21 @@
     <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
       <input id="schedule-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Your team #"
         style="flex:1 1 80px;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;"
-        oninput="scheduleMyTeam=this.value.trim();renderSchedule()">
+        oninput="setMyTeam(this.value)">
       <div class="selector-bar" style="margin:0;flex-shrink:0">
         <div class="selector-chip active" id="sched-filter-all" onclick="setSchedFilter('all')">All</div>
         <div class="selector-chip" id="sched-filter-mine" onclick="setSchedFilter('mine')">Mine</div>
+        <div class="selector-chip" id="sched-filter-next" onclick="setSchedFilter('next')">Next</div>
         <div class="selector-chip" id="sched-filter-compare" onclick="setSchedFilter('compare')">Compare</div>
+        <div class="selector-chip" id="sched-filter-strength" onclick="setSchedFilter('strength')">Strength</div>
       </div>
+    </div>
+    <div id="sched-next-panel" style="display:none;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:var(--muted)">
+      <span style="white-space:nowrap">Current match</span>
+      <input id="sched-done" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="auto"
+        style="width:80px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:7px 10px;color:var(--text);font-size:15px;font-weight:700;outline:none;-webkit-appearance:none;text-align:center;"
+        oninput="schedSetCurrent(this.value)">
+      <span style="font-size:11px">blank = the match after the last score you entered</span>
     </div>
     <div id="sched-compare-panel" style="display:none;gap:8px;margin-bottom:10px">
       <input id="sched-cmp-a" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team A"
@@ -539,7 +617,7 @@
     <!-- Calibrate with real scores -->
     <details id="pred-cal-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-top:12px;">
       <summary style="cursor:pointer;font-size:14px;font-weight:700;">Calibrate with real match scores</summary>
-      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;background:var(--card2);border-radius:8px;padding:8px 10px;">How accurate is it? Tested on 234 real matches from three events, using scouting from <em>other</em> events (a hard test), the model picked the winner <strong style="color:var(--text)">67%</strong> of the time, about the same as simply adding up each team's EPA (68%). Its win percentages are tempered so they match how often it's really right. Scouting from the same event should do better, and that's what this section measures for you.</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;background:var(--card2);border-radius:8px;padding:8px 10px;">How accurate is it? With scouting from the <em>same</em> event, tested on 166 real matches (each one predicted without its own scouting), the model picked the winner <strong style="color:var(--text)">81–82%</strong> of the time, about the same as simply adding up each team's EPA (79–82%). With scouting from <em>other</em> events it is much weaker (67% on 234 matches), so predictions get more trustworthy once you've scouted the event you're at. The win percentages are tempered to match how often it's really right, more loosely for same-event scouting. This section measures it on your own results.</div>
       <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">Upload a screenshot of the real results (from The Blue Alliance or FRC Events), or type them as <strong>Match, Red Score, Blue Score</strong>, one match per line. Scores are tied to teams through your match schedule; a screenshot that also shows the teams can load the schedule for you. The app measures how accurate the model is and can tune it to your results (needs 10+ matches).</div>
       <div id="results-img-zone" onclick="document.getElementById('results-img-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="predDropImages(event)" style="border:2px dashed var(--border);border-radius:var(--radius);padding:16px;text-align:center;cursor:pointer;margin-top:10px;transition:border-color .2s;">
         <div style="font-size:22px;margin-bottom:4px;">📷</div>
@@ -738,30 +816,20 @@ function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
 function pct(v) { return Math.round(v * 10) / 10; }
 
 // ── BUILD TEAM STATS ───────────────────────────────────────────────────────
-function buildTeamStats(rows) {
-  const teams = {};
-  rows.forEach(r => {
-    const t = r.robot_number;
-    if (!t) return;
-    if (!teams[t]) teams[t] = { rows: [], team: t };
-    teams[t].rows.push(r);
-  });
-
-  const stats = {};
-  Object.entries(teams).forEach(([team, d]) => {
-    const rs = d.rows;
-    const autoShots   = rs.map(r => n(r.auto_shots));
-    const teleShots   = rs.map(r => n(r.teleop_shots));
-    const totalShots  = rs.map((r,i) => autoShots[i] + teleShots[i]);
-    const passed      = rs.map(r => n(r.passed_shots));
-    const autoAcc     = rs.filter(r => n(r.auto_shots)>0).map(r => n(r.auto_accuracy));
-    const speed       = rs.filter(r => n(r.robot_speed)>0).map(r => n(r.robot_speed));
-    const agility     = rs.filter(r => n(r.robot_agility)>0).map(r => n(r.robot_agility));
-    const defense     = rs.filter(r => n(r.robot_defense)>0).map(r => n(r.robot_defense));
-    const accuracy    = rs.filter(r => n(r.robot_accuracy)>0).map(r => n(r.robot_accuracy));
-
-    // EPA = avg total shots weighted by accuracy
-    const epa = avg(totalShots) * (accuracy.length ? avg(accuracy) / 100 : 1);
+// Rankings, team pages, Compare and the Picklist all read the same cleaned numbers as the predictor and the
+// charts: one observation per team per match (several scouts are averaged), obvious typos ignored, and
+// "not recorded" left out instead of counted as zero. (See predGet.)
+const STAT_INCIDENTS = ['lost_comms', 'game_piece_stuck', 'damaged_others', 'damaged_self', 'foul', 'tipped'];
+function buildTeamStats() {
+  const C = predGet(), stats = {};
+  Object.entries(C.obs).forEach(([team, obs]) => {
+    if (!obs.length) return;
+    const rs = C.rows[team];
+    const mean = f => { const v = obs.map(f).filter(x => x != null); return v.length ? avg(v) : null; };
+    const auto = mean(o => o.auto), tele = mean(o => o.tele);
+    const total = mean(o => (o.auto != null && o.tele != null) ? o.auto + o.tele : null);
+    const totalShots = total != null ? total : (auto || 0) + (tele || 0);
+    const acc = mean(o => o.acc), autoAcc = mean(o => o.autoAcc);
 
     // Abilities — most common non-"didnt" value
     const abilityMode = (col) => {
@@ -770,33 +838,36 @@ function buildTeamStats(rows) {
       const best = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
       return best ? best[0] : 'didnt';
     };
-
-    // Incidents
-    const incSum = (col) => rs.reduce((acc,r)=>acc+n(r[col]),0);
+    const inc = col => obs.reduce((acc, o) => acc + o.incs[col], 0);
+    let ignored = 0;
+    rs.forEach(r => { if (C.bad.has(r)) ignored++; });
 
     stats[team] = {
       team,
-      matches: rs.length,
-      avgAutoShots: pct(avg(autoShots)),
-      avgTeleShots: pct(avg(teleShots)),
-      avgTotalShots: pct(avg(totalShots)),
-      avgPassed: pct(avg(passed)),
-      autoAccuracy: autoAcc.length ? pct(avg(autoAcc)) : null,
-      avgSpeed: speed.length ? pct(avg(speed)) : 0,
-      avgAgility: agility.length ? pct(avg(agility)) : 0,
-      avgDefense: defense.length ? pct(avg(defense)) : 0,
-      avgAccuracy: accuracy.length ? pct(avg(accuracy)) : 0,
-      epa: pct(epa),
+      matches: obs.length,
+      scoutEntries: rs.length,
+      ignoredEntries: ignored,
+      avgAutoShots: pct(auto || 0),
+      avgTeleShots: pct(tele || 0),
+      avgTotalShots: pct(totalShots),
+      avgPassed: pct(mean(o => o.passed) || 0),
+      autoAccuracy: autoAcc != null ? pct(autoAcc) : null,
+      avgSpeed: pct(mean(o => o.speed) || 0),
+      avgAgility: pct(mean(o => o.agility) || 0),
+      avgDefense: pct(mean(o => o.defense) || 0),
+      avgAccuracy: acc != null ? pct(acc) : 0,
+      // EPA = average total shots weighted by accuracy
+      epa: pct(totalShots * (acc != null ? acc / 100 : 1)),
       abilityBump: abilityMode('ability_bump'),
       abilityTrench: abilityMode('ability_trench'),
       abilityOutpost: abilityMode('ability_outpost'),
-      climbRate: rs.filter(r => n(r.endgame_climb_level) > 0).length / rs.length,
-      incLostComms: incSum('lost_comms'),
-      incStuck: incSum('game_piece_stuck'),
-      incDamagedOthers: incSum('damaged_others'),
-      incDamagedSelf: incSum('damaged_self'),
-      incFoul: incSum('foul'),
-      incTipped: incSum('tipped'),
+      climbRate: obs.filter(o => o.climb > 0).length / obs.length,
+      incLostComms: inc('lost_comms'),
+      incStuck: inc('game_piece_stuck'),
+      incDamagedOthers: inc('damaged_others'),
+      incDamagedSelf: inc('damaged_self'),
+      incFoul: inc('foul'),
+      incTipped: inc('tipped'),
       rows: rs
     };
   });
@@ -805,19 +876,24 @@ function buildTeamStats(rows) {
 
 // ── LOAD DATA ──────────────────────────────────────────────────────────────
 function rebuildFromFiles() {
-  const all = Object.values(loadedFiles).flatMap(f => f.rows);
   // Ignore exact duplicates (identical in every column), e.g. the same export loaded twice,
-  // so those entries aren't counted double in averages and match counts.
-  const seen = new Set();
-  rawData = all.filter(r => {
-    const key = Object.keys(r).filter(c => c !== '_file_event').map(c => r[c]).join('\u0001');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  // so those entries aren't counted double in averages and match counts. When two files hold the same
+  // rows, keep the copy from the file whose name matches the event written inside it, so the data is
+  // credited to the right event whichever file was loaded first.
+  const agree = f => { const k = f.rows.filter(r => r.event && r.event === r._file_event).length; return f.rows.length ? k / f.rows.length : 0; };
+  const files = Object.entries(loadedFiles).map(([name, f], i) => ({ name, f, i, a: agree(f) })).sort((x, y) => (y.a - x.a) || (x.i - y.i));
+  const seen = new Map();            // row -> the file that has it first
+  fileDups = {}; rawData = []; dupRowsRemoved = 0;
+  files.forEach(({ name, f }) => {
+    const d = fileDups[name] = { n: 0, from: {} };
+    f.rows.forEach(r => {
+      const key = Object.keys(r).filter(c => c !== '_file_event').map(c => r[c]).join('\u0001');
+      if (seen.has(key)) { d.n++; const o = seen.get(key); d.from[o] = (d.from[o] || 0) + 1; dupRowsRemoved++; return; }
+      seen.set(key, name); rawData.push(r);
+    });
   });
-  dupRowsRemoved = all.length - rawData.length;
   predVersion++; predCache = null;   // predictor models are rebuilt from the new data
-  teamStats = buildTeamStats(rawData);
+  teamStats = buildTeamStats();
   const count = Object.keys(teamStats).length;
   document.getElementById('team-count-badge').textContent = count + ' teams';
   renderRankings();
@@ -853,7 +929,7 @@ function clearAllData() {
   loadedFiles = {};
   rawData = [];
   teamStats = {};
-  dupRowsRemoved = 0;
+  dupRowsRemoved = 0; fileDups = {};
   predVersion++; predCache = null;
   localStorage.removeItem('frc_files');
   document.getElementById('team-count-badge').textContent = '0 teams';
@@ -914,6 +990,16 @@ function renderLoadedFiles() {
   if (!files.length) { list.innerHTML = ''; clearBtn.style.display = 'none'; exportBtn.style.display = 'none'; return; }
   clearBtn.style.display = 'block';
   exportBtn.style.display = 'block';
+  // Say what each file actually adds: a file whose rows are all copies of another file's adds nothing
+  const dupNote = name => {
+    const d = fileDups[name];
+    if (!d || !d.n) return '';
+    const src = Object.entries(d.from).filter(([o]) => o !== name).sort((a, b) => b[1] - a[1])[0];
+    const of = src ? ` of <strong>${esc(src[0])}</strong>` : '';
+    return d.n >= loadedFiles[name].count
+      ? `<div style="font-size:12px;color:var(--yellow);padding:0 2px 8px">⚠ Every row in this file is an exact copy${of}, so it adds no new data. Is it the right export?</div>`
+      : `<div style="font-size:12px;color:var(--yellow);padding:0 2px 8px">${d.n} of its rows are exact copies${of} and are ignored.</div>`;
+  };
   list.innerHTML = files.map(([name, f]) => `
     <div class="loaded-file">
       <div class="loaded-file-info">
@@ -921,8 +1007,8 @@ function renderLoadedFiles() {
         <span class="loaded-file-meta">${f.count} rows</span>
       </div>
       <button class="remove-btn" data-name="${esc(name)}" onclick="removeFile(this.dataset.name)">✕</button>
-    </div>
-  `).join('') + (dupRowsRemoved ? `<div style="font-size:12px;color:var(--yellow);padding:4px 2px">${dupRowsRemoved} duplicate rows ignored (identical entries appear in more than one file)</div>` : '');
+    </div>${dupNote(name)}
+  `).join('') + predQualitySummary();
 }
 
 function saveToCache() {
@@ -1057,6 +1143,9 @@ function showDetail(team) {
   if (s.incTipped)        incidents.push(`${s.incTipped}× tipped`);
 
   const matchRows = [...s.rows].sort((a,b)=>n(a.match_number)-n(b.match_number));
+  const badCols = predGet().bad;
+  // an entry flagged as a typo is shown struck through and is not counted in the averages above
+  const shotVal = (r, col, label) => { const v = n(r[col]); return badCols.has(r) && badCols.get(r).has(col) ? `<s style="color:var(--yellow)" title="Ignored: far above this team's other ${label} shots">${v}</s>` : v; };
 
   const flagSection = `<div id="flag-section-${team}" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin:8px 0;">${buildFlagSection(team)}</div>`;
 
@@ -1064,6 +1153,7 @@ function showDetail(team) {
     <div class="detail-hero">
       <div class="detail-team-num">Team ${s.team}</div>
       <div class="detail-matches">${s.matches} matches scouted · EPA ${s.epa}</div>
+      ${s.scoutEntries > s.matches || s.ignoredEntries ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${s.scoutEntries} scout entries${s.scoutEntries > s.matches ? ', averaged so each match counts once' : ''}${s.ignoredEntries ? ` · <span style="color:var(--yellow)">${s.ignoredEntries} suspicious entr${s.ignoredEntries === 1 ? 'y' : 'ies'} ignored</span>` : ''}</div>` : ''}
     </div>
     ${flagSection}
 
@@ -1101,8 +1191,8 @@ function showDetail(team) {
         <span class="match-num">Q${r.match_number}</span>
         <span class="match-alliance alliance-${(r.alliance||'').toLowerCase() === 'red' ? 'red' : 'blue'}">${esc(r.alliance||'?')}</span>
         <div class="match-details">
-          <div class="match-detail-item"><span class="match-detail-val">${n(r.auto_shots)+n(r.teleop_shots)}</span><span class="match-detail-lbl">shots</span></div>
-          <div class="match-detail-item"><span class="match-detail-val color-accent">${n(r.auto_shots)}</span><span class="match-detail-lbl">auto</span></div>
+          <div class="match-detail-item"><span class="match-detail-val">${badCols.has(r) && (badCols.get(r).has('auto_shots') || badCols.get(r).has('teleop_shots')) ? `<s style="color:var(--yellow)" title="Ignored: far above this team's other matches">${n(r.auto_shots)+n(r.teleop_shots)}</s>` : n(r.auto_shots)+n(r.teleop_shots)}</span><span class="match-detail-lbl">shots</span></div>
+          <div class="match-detail-item"><span class="match-detail-val color-accent">${shotVal(r, 'auto_shots', 'auto')}</span><span class="match-detail-lbl">auto</span></div>
           <div class="match-detail-item"><span class="match-detail-val">${n(r.robot_accuracy)>0?n(r.robot_accuracy)+'%':'—'}</span><span class="match-detail-lbl">acc</span></div>
           <div class="match-detail-item"><span class="match-detail-val">${n(r.robot_speed)||'—'}</span><span class="match-detail-lbl">spd</span></div>
         </div>
@@ -1773,9 +1863,13 @@ const PRED = {
   OUTLIER_MIN: 60,                 // a single scout entry is only suspect at/above this ...
   OUTLIER_RATIO: 3,                // ... and when it is this many times the team's biggest value in other matches
   AVG: '__avg__',                  // stand-in for an exactly average robot (what-if / impact)
-  TEMP: 2.3,                       // win-chance tempering. Tested on 234 real matches from 3 events, the raw simulated
-                                   // chance was overconfident (said 90%+, right ~75%); dividing its z-score by 2.3 fixed that
-                                   // (the best value was 1.8–2.8 when each event was left out in turn).
+  TEMP: 2.3,                       // win-chance tempering when the scouting is from OTHER events. Tested on 234 real matches
+                                   // from 3 events, the raw simulated chance was overconfident (said 90%+, right ~75%); dividing
+                                   // its z-score by 2.3 fixed that (the best value was 1.8–2.8 when each event was left out in turn).
+  TEMP_SAME: 1.2,                  // ... and when the scouting is from the SAME event as the match. Tested on 166 real matches
+                                   // (2026vabla + 2026chcmp, each match predicted without its own scouting): robots don't change
+                                   // between the scouting and the match, so the simulation is far less overconfident (best 1.2
+                                   // pooled; 1.4 and 1.0 for the two events).
   cal: null,                       // calibration from real results: { a, u:{comp:weight}, sigma, defCut, n, ... }
 };
 let predVersion = 0, predCache = null;
@@ -1836,6 +1930,8 @@ function predObservations(rows, bad) {
       defended: defVotes * 2 >= rs.length, defense: meanPos(rs, 'robot_defense'),
       climb: avg(rs.map(r => n(r.endgame_climb_level))),
       inc: avg(rs.map(r => n(r.lost_comms) + n(r.game_piece_stuck) + n(r.tipped))),
+      // incident counts for the team pages: if scouts disagree, the majority view of that match wins
+      incs: Object.fromEntries(STAT_INCIDENTS.map(c => [c, Math.round(avg(rs.map(r => n(r[c]))))])),
     };
   });
 }
@@ -1883,25 +1979,35 @@ function predGet() {
   if (predCache && predCache.version === predVersion) return predCache;
   const byTeam = {};
   rawData.forEach(r => { const t = r.robot_number; if (t) (byTeam[t] = byTeam[t] || []).push(r); });
-  const flags = [], models = {}, obsByTeam = {};
+  const flags = [], models = {}, obsByTeam = {}, badAll = new Map();
   let teamMatches = 0, multiScout = 0, climbSeen = false;
   Object.entries(byTeam).forEach(([team, rows]) => {
     const bad = predFindOutliers(rows, team, flags);
+    bad.forEach((cols, row) => badAll.set(row, cols));
     const obs = predObservations(rows, bad);
     obsByTeam[team] = obs;       // the charts use these same cleaned per-match numbers
     obs.forEach(o => { teamMatches++; if (o.scouts > 1) multiScout++; if (o.climb > 0) climbSeen = true; });
     models[team] = predModelFor(obs);
   });
-  predCache = { version: predVersion, models, obs: obsByTeam, lg: predLeague(models), flags, params: {}, stats: { teamMatches, multiScout, climbSeen } };
+  predCache = { version: predVersion, models, obs: obsByTeam, rows: byTeam, bad: badAll, lg: predLeague(models), flags, params: {}, stats: { teamMatches, multiScout, climbSeen } };
   return predCache;
 }
 
 // Final numbers the simulation draws from: the team's own averages, blended toward the league
 // average until FULL_SAMPLE matches are scouted. Unknown teams get the league average and a wide spread.
+// While predExcl is set, that match's scouting is ignored, so a match that has already been played can be
+// predicted the way it would have been before it happened (used by the accuracy test and the forecast table).
+let predExcl = null;
+function predWithout(match, fn) { const old = predExcl; predExcl = match; try { return fn(); } finally { predExcl = old; } }
 function predParams(team) {
-  const C = predGet();
-  if (C.params[team]) return C.params[team];
-  const lg = C.lg, m = C.models[team];
+  const C = predGet(), ckey = predExcl == null ? team : team + '|' + predExcl;
+  if (C.params[ckey]) return C.params[ckey];
+  const lg = C.lg;
+  let m = C.models[team];
+  if (predExcl != null) {
+    const all = C.obs[team] || [], rest = all.filter(o => o.match !== predExcl);
+    if (rest.length !== all.length) m = rest.length ? predModelFor(rest) : null;
+  }
   const sdOr = (s, mean, frac) => s != null ? s : frac * mean;
   let p;
   if (!m) {
@@ -1928,8 +2034,17 @@ function predParams(team) {
   }
   p.relMult = Math.max(0.7, 1 - p.incPerMatch * 0.15);
   p.cvPenalty = p.cv > 0 ? Math.max(0.75, 1 - p.cv * 0.25) : 1;   // shown as "consistency"; not applied to the score (the simulation already carries the variance)
-  C.params[team] = p;
+  C.params[ckey] = p;
   return p;
+}
+// EPA from a team's observations (same recipe as the Rankings tab), optionally leaving one match out
+function predEpaOf(team, excludeMatch) {
+  const obs = (predGet().obs[team] || []).filter(o => o.match !== excludeMatch);
+  if (!obs.length) return 0;
+  const mean = f => { const v = obs.map(f).filter(x => x != null); return v.length ? avg(v) : null; };
+  const tot = mean(o => (o.auto != null && o.tele != null) ? o.auto + o.tele : null);
+  const shots = tot != null ? tot : (mean(o => o.auto) || 0) + (mean(o => o.tele) || 0), acc = mean(o => o.acc);
+  return shots * (acc != null ? acc / 100 : 1);
 }
 
 // ── 3. one robot in one match ──────────────────────────────────────────────
@@ -2023,7 +2138,33 @@ function normInv(p) {
 // overconfident: the simulation can't see everything that makes real matches unpredictable.
 function predWinProb(sim) {
   if (PRED.cal && PRED.cal.sigma > 0) return normCdf(sim.marginMean / (PRED.cal.sigma * Math.SQRT2));
-  return normCdf(normInv(sim.redWin) / PRED.TEMP);
+  return normCdf(normInv(sim.redWin) / predTempFor([...sim.redTeams, ...sim.blueTeams]));
+}
+
+// Which scouted event does the loaded schedule belong to? The one where the scheduled teams were actually
+// scouted in the scheduled match numbers. null when none lines up (schedule from another event, or none loaded).
+function predScheduleEvent() {
+  const C = predGet(), key = matchSchedule.length + ':' + (matchSchedule[0] ? matchSchedule[0].red.join(',') : '');
+  if (C.schedEvKey === key) return C.schedEv;
+  const have = new Set(); let maxMatch = {};
+  Object.entries(C.obs).forEach(([t, obs]) => obs.forEach(o => { have.add(t + '|' + o.ev + '|' + o.match); maxMatch[o.ev] = Math.max(maxMatch[o.ev] || 0, o.match); }));
+  let best = null, bestHits = 0;
+  Object.keys(maxMatch).forEach(ev => {
+    const upTo = matchSchedule.filter(m => n(m.match) <= maxMatch[ev]);
+    const hits = upTo.filter(m => [...m.red, ...m.blue].filter(t => have.has(t + '|' + ev + '|' + n(m.match))).length >= 3).length;
+    if (hits >= 3 && hits >= 0.6 * upTo.length && hits > bestHits) { best = ev; bestHits = hits; }
+  });
+  C.schedEvKey = key; C.schedEv = best;
+  return best;
+}
+// How much to temper the win chance: the more of these robots' scouting comes from this match's own event
+// (8+ matches = fully), the closer to TEMP_SAME; otherwise TEMP.
+function predTempFor(teams) {
+  const ev = predScheduleEvent();
+  if (!ev || !teams.length) return PRED.TEMP;
+  const C = predGet();
+  const f = avg(teams.map(t => Math.min(1, (C.obs[t] || []).filter(o => o.ev === ev && o.match !== predExcl).length / 8)));
+  return PRED.TEMP - f * (PRED.TEMP - PRED.TEMP_SAME);
 }
 
 // ── 5. calibration against real results ────────────────────────────────────
@@ -2100,14 +2241,19 @@ function predFit(samples, lambda) {
 }
 const predApply = (fit, c) => fit.a + PRED.COMPS.reduce((s, k, i) => s + fit.u[k] * c[i], 0);
 
-function predFeatures(rows, defCut) {
+// honest = each match is predicted from scouting that leaves that match out (as it would have been before it was played)
+function predFeatures(rows, defCut, honest) {
   const old = PRED.DEF_CUT; PRED.DEF_CUT = defCut;
   try {
     return rows.map(r => {
-      const rd = r.red.map(t => predRobot(predParams(t), null)), bd = r.blue.map(t => predRobot(predParams(t), null));
-      const ra = predAlliance(rd, bd, null), ba = predAlliance(bd, rd, null);
-      const epa = ts => ts.reduce((s, t) => s + (teamStats[t] ? teamStats[t].epa : 0), 0);
-      return { ...r, rc: PRED.COMPS.map(k => ra.comps[k]), bc: PRED.COMPS.map(k => ba.comps[k]), redEpa: epa(r.red), blueEpa: epa(r.blue) };
+      const one = () => {
+        const rd = r.red.map(t => predRobot(predParams(t), null)), bd = r.blue.map(t => predRobot(predParams(t), null));
+        const ra = predAlliance(rd, bd, null), ba = predAlliance(bd, rd, null);
+        const ex = honest ? r.match : null;
+        const epa = ts => ts.reduce((s, t) => s + predEpaOf(t, ex), 0);
+        return { ...r, rc: PRED.COMPS.map(k => ra.comps[k]), bc: PRED.COMPS.map(k => ba.comps[k]), redEpa: epa(r.red), blueEpa: epa(r.blue) };
+      };
+      return honest ? predWithout(r.match, one) : one();
     });
   } finally { PRED.DEF_CUT = old; }
 }
@@ -2129,9 +2275,9 @@ function predCV(feats, lambda, folds = 5) {      // matches are dealt into folds
   return { rmse: cnt ? Math.sqrt(se / cnt) : Infinity, acc: total ? correct / total : null };
 }
 
-// Backtest the model on real results and (with enough matches) fit calibration. Note the scouting data
-// includes the matches being tested, so accuracy is a little optimistic; the cross-validation guards the fit itself.
-function predBacktest(results) {
+// Backtest the model on real results and (with enough matches) fit calibration. Each match is predicted
+// with its own scouting left out (honest = true), so the accuracy is what you'd have got before the match.
+function predBacktest(results, honest = true) {
   const rows = [];
   Object.values(results).forEach(r => {
     const m = matchSchedule.find(x => x.match === r.match);
@@ -2142,7 +2288,7 @@ function predBacktest(results) {
   if (rows.length < 4) return rep;
 
   const hit = (feats, f) => { let c = 0, t = 0; feats.forEach(r => { const am = r.redY - r.blueY; if (am === 0) return; const pm = f(r); if (pm === 0) return; t++; if (Math.sign(pm) === Math.sign(am)) c++; }); return { c, t }; };
-  const base = predFeatures(rows, 0.25);
+  const base = predFeatures(rows, 0.25, honest);
   const sumC = c => c.reduce((a, b) => a + b, 0);
   rep.defaultAcc = hit(base, r => sumC(r.rc) - sumC(r.bc));
   rep.epaAcc = hit(base, r => r.redEpa - r.blueEpa);
@@ -2156,7 +2302,7 @@ function predBacktest(results) {
   // choose the defense strength, then the ridge strength, by cross-validated error
   let best = { cut: 0.25, cv: { rmse: Infinity }, feats: base };
   [0, 0.15, 0.25, 0.4].forEach(cut => {
-    const feats = cut === 0.25 ? base : predFeatures(rows, cut), cv = predCV(feats, Infinity);
+    const feats = cut === 0.25 ? base : predFeatures(rows, cut, honest), cv = predCV(feats, Infinity);
     if (cv.rmse < best.cv.rmse) best = { cut, cv, feats };
   });
   let lam = Infinity, lamCv = best.cv;
@@ -2164,6 +2310,101 @@ function predBacktest(results) {
   const fit = predFit(best.feats.flatMap(r => [{ c: r.rc, y: r.redY }, { c: r.bc, y: r.blueY }]), lam);
   rep.fit = { ...fit, defCut: best.cut, lambda: lam, sigma: lamCv.rmse, cvRmse: lamCv.rmse, cvAcc: lamCv.acc, scaleOnlyAcc: best.cv.acc, scaleOnlyRmse: best.cv.rmse, n: rows.length };
   return rep;
+}
+// ── 6. data quality: do scouts agree, and which columns are empty ─────────
+// Where two or more scouts watched the same robot in the same match, compare each scout's shot count
+// (auto + teleop) with the others'. Flags scouts who are consistently high or low, scouts who often log
+// zero when others saw plenty, and the individual matches where the scouts disagree wildly.
+const AUDIT = {
+  MIN_COMPARED: 8,        // comparisons needed before a scout is judged
+  BIAS: 20,               // average shots above/below the other scouts that counts as consistent bias ...
+  Z: 2.5,                 // ... and it must also be this many standard errors from zero (the other scouts are noisy too)
+  SIDE: 0.5,              // ... and the share of comparisons that must lean the same way
+  BLANK_MIN: 3,           // zero entries (where others saw 30+ shots) needed to flag a scout for blanks
+  BLANK_SHARE: 0.12,
+  DISPUTE: 30, DISPUTE_FRAC: 0.6,   // a match is "disputed" when the scouts' totals differ by this many shots AND this share of their average
+};
+function predScoutAudit() {
+  const C = predGet();
+  if (C.audit) return C.audit;
+  const groups = new Map();
+  Object.entries(C.rows).forEach(([team, rows]) => rows.forEach(r => {
+    const k = team + '|' + (r._file_event || r.event || '') + '|' + r.match_number;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }));
+  const shots = r => { const b = C.bad.get(r); return (b && (b.has('auto_shots') || b.has('teleop_shots'))) ? null : n(r.auto_shots) + n(r.teleop_shots); };
+  const per = {}, disputes = [], rel = [];
+  let multi = 0;
+  groups.forEach(rs => {
+    const items = rs.map(r => ({ who: (r.username || '').trim() || 'unknown', v: shots(r) })).filter(x => x.v != null);
+    if (items.length < 2) return;
+    multi++;
+    const vals = items.map(x => x.v), mean = avg(vals), spread = Math.max(...vals) - Math.min(...vals);
+    if (spread >= Math.max(AUDIT.DISPUTE, AUDIT.DISPUTE_FRAC * mean)) {
+      disputes.push({ team: rs[0].robot_number, match: rs[0].match_number, ev: rs[0]._file_event || '', spread, entries: items.map(x => ({ who: x.who, v: Math.round(x.v) })) });
+    }
+    items.forEach((x, i) => {
+      const m = avg(vals.filter((_, j) => j !== i)), d = x.v - m;
+      rel.push(Math.abs(d) / Math.max(15, (x.v + m) / 2));
+      const p = per[x.who] = per[x.who] || { who: x.who, n: 0, diff: 0, sq: 0, up: 0, down: 0, blank: 0 };
+      p.n++; p.diff += d; p.sq += d * d;
+      if (d >= 15) p.up++; else if (d <= -15) p.down++;
+      if (x.v === 0 && m >= 30) p.blank++;
+    });
+  });
+  const scouts = [];
+  Object.values(per).forEach(p => {
+    if (p.n < AUDIT.MIN_COMPARED) return;
+    const bias = p.diff / p.n, why = [];
+    const se = Math.sqrt(Math.max(0, p.sq / p.n - bias * bias) / (p.n - 1));
+    const sure = Math.abs(bias) >= AUDIT.Z * se;
+    if (sure && bias <= -AUDIT.BIAS && p.down / p.n >= AUDIT.SIDE) why.push({ kind: 'low', text: `reads about ${Math.round(-bias)} shots lower than other scouts of the same robot` });
+    else if (sure && bias >= AUDIT.BIAS && p.up / p.n >= AUDIT.SIDE) why.push({ kind: 'high', text: `reads about ${Math.round(bias)} shots higher than other scouts of the same robot` });
+    if (p.blank >= AUDIT.BLANK_MIN && p.blank / p.n >= AUDIT.BLANK_SHARE) why.push({ kind: 'blank', text: `logged zero shots ${p.blank} times when other scouts saw 30 or more` });
+    if (why.length) scouts.push({ who: p.who, n: p.n, bias, blank: p.blank, why });
+  });
+  scouts.sort((a, b) => Math.max(Math.abs(b.bias), b.blank * 8) - Math.max(Math.abs(a.bias), a.blank * 8));
+  disputes.sort((a, b) => b.spread - a.spread);
+  return (C.audit = { multi, noise: rel.length ? predMedian(rel) : null, scouts, disputes, scoutsJudged: Object.values(per).filter(p => p.n >= AUDIT.MIN_COMPARED).length });
+}
+
+// Columns that carry no information. A column that's the same in every entry was probably never filled in
+// (or the form doesn't record it), so nothing downstream can use it.
+const COL_HINTS = {
+  endgame_climb_level: 'climbing is not part of the predictions, charts or picklist',
+  endgame_climb_pos: 'climb position is not recorded', endgame_climb_time: 'climb time is not recorded',
+  auto_climb: 'auto climbing is not recorded', ability_outpost: 'outpost ability is not recorded',
+};
+const COL_SKIP = new Set(['event', '_file_event', 'id', 'username', 'notes', 'match_number', 'robot_number', 'alliance', 'timestamp', 'created_at']);
+const COL_MODEL = new Set(['robot_accuracy', 'robot_speed', 'robot_agility', 'auto_accuracy', 'auto_shots', 'teleop_shots']);
+function predColumnReport() {
+  const C = predGet();
+  if (C.cols) return C.cols;
+  const empty = [], stuck = [];
+  if (rawData.length >= 5) {
+    const cols = []; rawData.forEach(r => Object.keys(r).forEach(c => { if (!cols.includes(c)) cols.push(c); }));
+    cols.filter(c => !COL_SKIP.has(c)).forEach(c => {
+      const cnt = {}; rawData.forEach(r => { const v = String(r[c] == null ? '' : r[c]).trim().toLowerCase(); cnt[v] = (cnt[v] || 0) + 1; });
+      const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0], share = top[1] / rawData.length;
+      if (Object.keys(cnt).length === 1) empty.push({ col: c, value: top[0], hint: COL_HINTS[c] || '' });
+      else if (COL_MODEL.has(c) && share >= 0.9) stuck.push({ col: c, value: top[0], share });
+    });
+  }
+  return (C.cols = { empty, stuck });
+}
+
+// One line for the Import tab: is there anything worth looking at?
+function predQualitySummary() {
+  if (!rawData.length) return '';
+  const C = predGet(), A = predScoutAudit(), K = predColumnReport();
+  const bits = [];
+  if (C.flags.length) bits.push(`${C.flags.length} suspicious entr${C.flags.length === 1 ? 'y' : 'ies'} ignored`);
+  if (A.scouts.length) bits.push(`${A.scouts.length} scout${A.scouts.length === 1 ? '' : 's'} who read consistently off`);
+  if (A.disputes.length) bits.push(`${A.disputes.length} match${A.disputes.length === 1 ? '' : 'es'} where scouts disagree a lot`);
+  if (K.empty.length) bits.push(`${K.empty.length} column${K.empty.length === 1 ? '' : 's'} with no data`);
+  if (!bits.length) return '';
+  return `<div style="font-size:12px;color:var(--muted);padding:6px 2px;line-height:1.5">Data check: ${bits.join(' · ')}. <a href="#" style="color:var(--accent)" onclick="predOpenDataQuality();return false">See details</a></div>`;
 }
 // ═══ PREDICTOR MODEL END ═══════════════════════════════════════════════════
 
@@ -2220,14 +2461,20 @@ function predRobotDetail(team, mean) {
     reliability: p.known ? Math.round(p.relMult * 100) : null, consistency: p.known ? Math.round(p.cvPenalty * 100) : null, dataQuality: p.quality };
 }
 
+// Low / Medium / High: how far apart the alliances are, and how much scouting backs the numbers
+function predLevel(sim) {
+  const pRed = predWinProb(sim), pWin = Math.max(pRed, 1 - pRed);
+  const ps = [...sim.redTeams, ...sim.blueTeams].map(predParams);
+  const minN = Math.min(...ps.map(p => p.n)), unknown = ps.filter(p => !p.known).length;
+  if (pWin < 0.6 || minN < 3 || unknown) return 'Low';
+  if (pWin >= 0.75 && minN >= 6) return 'High';
+  return 'Medium';
+}
 function renderPrediction(sim) {
   const pRed = predWinProb(sim);
   const winner = pRed > 0.5 ? 'red' : 'blue', pWin = Math.max(pRed, 1 - pRed);
   const allTeams = [...sim.redTeams, ...sim.blueTeams], ps = allTeams.map(predParams);
-  const minN = Math.min(...ps.map(p => p.n)), unknown = ps.filter(p => !p.known).length;
-  let level = 'Medium';
-  if (pWin < 0.6 || minN < 3 || unknown) level = 'Low';
-  else if (pWin >= 0.75 && minN >= 6) level = 'High';
+  const level = predLevel(sim);
 
   const banner = predEl('predict-banner'), isRed = winner === 'red';
   if (pWin < 0.53) {
@@ -2308,6 +2555,10 @@ function predBreakdownRows(details, color) {
 function predRenderCharts(redD, blueD) {
   predictCharts.forEach(c => c.destroy());
   predictCharts = [];
+  if (typeof Chart === 'undefined') {     // the chart library didn't load: the prediction itself doesn't need it
+    predEl('predict-charts').innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 2px">The charts could not load (chart.umd.min.js is missing or blocked), but the prediction above is complete.</div>';
+    return;
+  }
   const all = [...redD, ...blueD], labels = all.map(d => 'T' + d.team);
   const bg = [...redD.map(() => 'rgba(224,85,85,.7)'), ...blueD.map(() => 'rgba(59,130,246,.7)')];
   const border = [...redD.map(() => '#e05555'), ...blueD.map(() => '#60a5fa')];
@@ -2386,7 +2637,8 @@ function predForecast() {
   const body = matchSchedule.filter(m => m.red.length && m.blue.length).map(m => {
     const res = predResults[m.match];
     if (onlyOpen && res) return '';
-    const sim = predSimulate(m.red, m.blue, 1500, predHash('f' + m.match + '|' + rawData.length + (PRED.cal ? 'c' : 'u')));
+    const run = () => predSimulate(m.red, m.blue, 1500, predHash('f' + m.match + '|' + rawData.length + (PRED.cal ? 'c' : 'u')));
+    const sim = res ? predWithout(n(m.match), run) : run();      // a match that was already played is predicted without its own scouting
     const pRed = predWinProb(sim), side = pRed >= 0.5 ? 'red' : 'blue', pw = Math.max(pRed, 1 - pRed);
     let actual = '', mark = '';
     if (res) {
@@ -2402,7 +2654,7 @@ function predForecast() {
       <td style="${td}font-weight:800;color:${mark === '✓' ? 'var(--green)' : 'var(--red)'}">${mark}</td></tr>`;
   }).join('');
   const th = 'padding:7px 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);background:var(--card2);border-bottom:2px solid var(--border);text-align:center;';
-  out.innerHTML = (judged ? `<div style="font-size:13px;margin:8px 2px"><strong>${right}/${judged}</strong> winners picked correctly (${Math.round(right / judged * 100)}%) <span style="color:var(--muted)">— your scouting includes these matches, so this is a bit optimistic</span></div>` : '') +
+  out.innerHTML = (judged ? `<div style="font-size:13px;margin:8px 2px"><strong>${right}/${judged}</strong> winners picked correctly (${Math.round(right / judged * 100)}%) <span style="color:var(--muted)">— each match predicted without its own scouting</span></div>` : '') +
     (body ? `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Match</th><th style="${th}">Pick</th><th style="${th}">Projected${PRED.cal ? '' : ' (units)'}</th><th style="${th}">Actual</th><th style="${th}"></th></tr></thead><tbody>${body}</tbody></table></div>`
       : '<div class="empty"><p>No matches to show</p></div>');
 }
@@ -2432,7 +2684,7 @@ function predRenderCalibration(skipped) {
   html += `<div style="margin-top:6px">Tuned model, tested on matches it wasn't fitted to: winner <strong>${f.cvAcc === null ? '—' : Math.round(f.cvAcc * 100) + '%'}</strong>, typical score error <strong>±${Math.round(f.cvRmse)}</strong> points (guessing the average would be ±${Math.round(r.naiveRmse)}).</div>`;
   const tr = k => { const i = PRED.COMPS.indexOf(k), shown = r.compSd[i] >= 0.05 * r.totalSd; return `<tr><td style="padding:3px 8px 3px 0">${PRED.LABELS[k]}</td><td style="padding:3px 0;text-align:right">${shown ? f.u[k].toFixed(2) + ' pts per unit' : '<span style="color:var(--muted)">too little variation to tell</span>'}</td></tr>`; };
   html += `<table style="margin-top:8px;font-size:12px;border-collapse:collapse">${PRED.COMPS.map(tr).join('')}</table>`;
-  html += `<div style="color:var(--muted);margin-top:6px;font-size:11px">Your scouting data includes these matches, so untuned accuracy is a bit optimistic.</div></div>`;
+  html += `<div style="color:var(--muted);margin-top:6px;font-size:11px">Every match above was predicted without its own scouting, the way it would have been before it was played.</div></div>`;
   if (good) html += `<button class="btn" onclick="predApplyCalibration()">Apply calibration</button>`;
   else html += `<div style="color:var(--yellow);margin-top:8px;font-size:13px">⚠ The tuned model isn't clearly better than guessing on these results, so I won't apply it. More matches or better-matched results may help.</div>`;
   out.innerHTML = html;
@@ -2607,16 +2859,47 @@ function predIngestOCRRows(rows, unreadable) {
 }
 
 // ── what the data looks like ───────────────────────────────────────────────
-let dupRowsRemoved = 0;
+let dupRowsRemoved = 0, fileDups = {};
+function predOpenDataQuality() {
+  showPage('predict');
+  const d = predEl('pred-data-card'); d.open = true;
+  d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 function predRenderDataNotes() {
   const out = predEl('pred-data-output');
   if (!out) return;
   if (!rawData.length) { out.innerHTML = '<div style="font-size:13px;color:var(--muted)">No scouting data loaded.</div>'; return; }
-  const C = predGet(), li = (t, c) => `<div style="font-size:12px;padding:3px 0;color:${c || 'var(--text)'}">${t}</div>`;
+  const C = predGet(), A = predScoutAudit(), K = predColumnReport();
+  const li = (t, c) => `<div style="font-size:12px;padding:3px 0;color:${c || 'var(--text)'}">${t}</div>`;
+  const head = t => `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">${t}</div>`;
   let h = li(`${rawData.length} scout entries covering ${Object.keys(C.models).length} teams and ${C.stats.teamMatches} team-matches.`);
   if (dupRowsRemoved) h += li(`${dupRowsRemoved} exact duplicate entries were ignored (the same file loaded twice, or two files with identical rows).`, 'var(--yellow)');
   h += li(`${C.stats.multiScout} team-matches were scouted by 2 or more people; their numbers are averaged so each match counts once.`);
-  if (C.flags.length) h += li(`Ignored ${C.flags.length} suspicious entr${C.flags.length === 1 ? 'y' : 'ies'} (far above that team's other matches): ` + C.flags.map(f => `${String(f.team).replace(/[^\w-]/g, '')} Q${f.match} ${f.col} ${Math.round(f.value)}`).join(', '), 'var(--yellow)');
+  if (C.flags.length) h += li(`Ignored ${C.flags.length} suspicious entr${C.flags.length === 1 ? 'y' : 'ies'} (far above that team's other matches): ` + C.flags.map(f => `${esc(String(f.team).replace(/[^\w-]/g, ''))} Q${f.match} ${f.col} ${Math.round(f.value)}`).join(', '), 'var(--yellow)');
+
+  // columns with nothing in them
+  if (K.empty.length || K.stuck.length) {
+    h += head('Columns with no data');
+    if (K.empty.length) h += li(`The same value in every entry, so they carry no information: ` + K.empty.map(e => `<strong>${esc(e.col)}</strong> (always “${esc(e.value) || 'blank'}”${e.hint ? ' — ' + esc(e.hint) : ''})`).join('; ') + '.', 'var(--yellow)');
+    K.stuck.forEach(s => { h += li(`<strong>${esc(s.col)}</strong> is “${esc(s.value)}” in ${Math.round(s.share * 100)}% of entries. It may have been left at its default.`, 'var(--yellow)'); });
+  }
+
+  // do the scouts agree?
+  h += head('Do the scouts agree?');
+  if (!A.multi) h += li('No robot was watched by two scouts in the same match, so there is nothing to compare.', 'var(--muted)');
+  else {
+    h += li(`${A.multi} robot-matches were watched by 2+ scouts. Their shot counts typically differ by about <strong>${Math.round(A.noise * 100)}%</strong>${A.noise > 0.3 ? ', so single-match numbers are rough and averages over many matches matter more.' : '.'}`);
+    if (A.scouts.length) {
+      h += li('Scouts who are consistently off (compared with other scouts of the same robot):', 'var(--muted)');
+      A.scouts.slice(0, 8).forEach(s => { h += li(`• <strong>${esc(s.who)}</strong> (${s.n} comparisons): ${s.why.map(w => esc(w.text)).join('; ')}`, 'var(--yellow)'); });
+      if (A.scouts.length > 8) h += li(`…and ${A.scouts.length - 8} more.`, 'var(--muted)');
+      h += li('This is a comparison, not proof: the other scouts could be the ones who are off. A quick chat or a refresher on what counts as a shot usually helps.', 'var(--muted)');
+    } else h += li(A.scoutsJudged ? 'No scout is consistently higher or lower than the others.' : `Not enough overlap to judge individual scouts (each needs ${AUDIT.MIN_COMPARED}+ shared robot-matches).`, 'var(--green)');
+    if (A.disputes.length) {
+      h += li(`${A.disputes.length} robot-match${A.disputes.length === 1 ? '' : 'es'} where scouts disagree wildly (biggest first):`, 'var(--muted)');
+      A.disputes.slice(0, 6).forEach(d => { h += li(`• Team ${esc(d.team)} Q${esc(d.match)}${d.ev ? ' (' + esc(d.ev) + ')' : ''}: ` + d.entries.map(e => `${esc(e.who)} ${e.v}`).join(' · '), 'var(--yellow)'); });
+    }
+  }
   if (!C.stats.climbSeen) h += li('No climb data: endgame_climb_level is 0 in every entry, so climbing is not modelled.', 'var(--yellow)');
   out.innerHTML = h;
 }
@@ -2721,7 +3004,7 @@ let plFilter = 'all';
 
 function setPlFilter(f) {
   plFilter = f;
-  ['all','available','taken','dnp'].forEach(x => document.getElementById('pl-filter-'+x)?.classList.toggle('active', x===f));
+  ['all','available','taken','dnp','mine'].forEach(x => document.getElementById('pl-filter-'+x)?.classList.toggle('active', x===f));
   renderPicklist();
 }
 
@@ -2738,13 +3021,55 @@ function resetPicklistStatuses() {
   renderPicklist();
 }
 
+function setPlSort(s) {
+  plSort = s;
+  ['fit', 'epa'].forEach(x => document.getElementById('pl-sort-' + x)?.classList.toggle('active', x === s));
+  renderPicklist();
+}
+
+// ── Who adds the most to my alliance? ──────────────────────────────────────
+// Each candidate is dropped into your alliance (you + the partners you've marked "mine", empty slots filled
+// with an average robot) and the match is simulated against the strongest alliance in the field (the three
+// best teams by EPA that aren't yours). The gain is how much better that goes than with an average robot in the
+// same slot. Same random draws for every candidate, so the gaps between teams are real, not noise.
+let plSort = 'fit', plFitCache = null;
+function plAllianceSoFar() {
+  const mine = Object.keys(teamStatus).filter(t => teamStatus[t] === 'mine' && t !== picklistMyTeam);
+  return [picklistMyTeam || PRED.AVG, ...mine];
+}
+function plFit() {
+  const base = plAllianceSoFar();
+  if (base.length >= 3 || !Object.keys(teamStats).length) return null;
+  const key = base.join(',') + '|' + predVersion + '|' + rawData.length + (PRED.cal ? 'c' : 'u');
+  if (plFitCache && plFitCache.key === key) return plFitCache.fit;
+  const fill = Array(2 - base.length).fill(PRED.AVG);
+  const byEpa = Object.values(teamStats).sort((a, b) => b.epa - a.epa).map(s => s.team);
+  const bench = skip => byEpa.filter(t => !base.includes(t) && t !== skip).slice(0, 3);
+  const seed = predHash('pl|' + key), N = 1000;
+  const refs = {};
+  const ref = b => { const k = b.join(','); if (!refs[k]) { const s = predSimulate([...base, PRED.AVG, ...fill], b, N, seed); refs[k] = { s, margin: s.red.mean - s.blue.mean, win: predWinProb(s) }; } return refs[k]; };
+  const byTeam = {};
+  byEpa.filter(t => !base.includes(t)).forEach(t => {
+    const b = bench(t), r = ref(b);
+    const s = predSimulate([...base, t, ...fill], b, N, seed);
+    const comps = PRED.COMPS.map(k => ({ k, d: s.red.comps[k] - r.s.red.comps[k] })).filter(x => x.d >= 1).sort((a, c) => c.d - a.d).slice(0, 2);
+    const defense = r.s.blue.defLoss - s.blue.defLoss;     // how much more of the opponents' scoring this robot's defense removes
+    const why = comps.map(x => `${PRED.LABELS[x.k]} +${Math.round(x.d)}`);
+    if (-defense >= 2) why.push(`slows their top scorer (−${Math.round(-defense)})`);
+    byTeam[t] = { gain: (s.red.mean - s.blue.mean) - r.margin, winGain: predWinProb(s) - r.win, why };
+  });
+  const fit = { base, byTeam, bench: bench(null) };
+  plFitCache = { key, fit };
+  return fit;
+}
+
 function renderPicklist() {
   const list = document.getElementById('picklist-list');
   const suggestion = document.getElementById('picklist-suggestion');
   if (!list) return;
 
   const allTeams = Object.entries(teamStats)
-    .map(([t, s]) => ({ team: t, epa: s.epa, matches: s.matches, shots: s.avgTotalShots, auto: s.avgAutoShots, accuracy: s.avgAccuracy, climb: s.climbRate }))
+    .map(([t, s]) => ({ team: t, epa: s.epa, matches: s.matches, shots: s.avgTotalShots }))
     .sort((a, b) => b.epa - a.epa);
 
   if (!allTeams.length) {
@@ -2753,31 +3078,36 @@ function renderPicklist() {
     return;
   }
 
-  const myStats = picklistMyTeam ? teamStats[picklistMyTeam] : null;
+  // simulating every team takes a moment, so only do it while the Picklist tab is showing
+  const live = document.getElementById('page-picklist').classList.contains('active');
+  const fit = live ? plFit() : null;
+  const unit = PRED.cal ? 'pts' : 'units';
+  const base = plAllianceSoFar();
   const available = allTeams.filter(t => !teamStatus[t.team] && t.team !== picklistMyTeam);
 
   if (suggestion) {
-    if (available.length) {
-      const scorePick = (t) => {
-        let score = t.epa * 10;
-        if (myStats) {
-          if (myStats.avgAutoShots < 2 && t.auto > 2) score += 15;
-          if ((myStats.climbRate || 0) < 0.5 && (t.climb || 0) > 0.5) score += 20;
-          if ((myStats.avgAccuracy || 0) < 60 && (t.accuracy || 0) > 70) score += 10;
-        }
-        return score;
-      };
-      const best = [...available].sort((a,b) => scorePick(b) - scorePick(a))[0];
-      const flag = flagEmoji(best.team);
-      suggestion.style.display = 'block';
+    suggestion.style.display = 'block';
+    const mineTeams = base.filter(t => t !== PRED.AVG);
+    const lineup = mineTeams.length ? mineTeams.map(t => 'T' + esc(t)).join(' + ') : 'no team yet';
+    if (live && !fit) {
+      suggestion.innerHTML = `<div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Your alliance is full</div>
+        <div style="font-size:13px;color:var(--text)">${lineup}. Tap ★ again on a pick to free a slot and see suggestions.</div>`;
+    } else if (fit && available.length) {
+      const top = available.filter(t => fit.byTeam[t.team]).sort((a, b) => fit.byTeam[b.team].gain - fit.byTeam[a.team].gain).slice(0, 3);
+      const slot = base.length === 1 ? 'first pick' : 'second pick';
       suggestion.innerHTML = `
-        <div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">⭐ Best Available Pick</div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="font-size:24px;font-weight:800;color:var(--accent)">T${best.team}</div>
-          <div style="font-size:13px;color:var(--text)">${flag}</div>
-          <div style="flex:1;font-size:12px;color:var(--muted)">EPA ${best.epa} · ${best.shots} shots · ${best.matches} matches</div>
-          <button onclick="setTeamStatus('${best.team}','taken')" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--muted);font-size:12px;cursor:pointer;">Taken</button>
-        </div>`;
+        <div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">⭐ Best ${slot} for your alliance</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">${picklistMyTeam ? `Alliance so far: ${lineup}.` : 'Enter your team number above so suggestions fit your robot (for now, measured with an average robot as captain).'} Gain = extra ${unit} of margin against the strongest alliance in the field (${fit.bench.map(t => esc(t)).join(', ')}).</div>
+        ${top.map((t, i) => { const f = fit.byTeam[t.team]; return `
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;${i ? 'border-top:1px solid var(--border);' : ''}">
+          <div style="font-size:${i ? 18 : 24}px;font-weight:800;color:var(--accent);min-width:${i ? 64 : 84}px">T${esc(t.team)}</div>
+          <div style="flex:1;font-size:12px;color:var(--muted);line-height:1.4">
+            <span style="color:var(--green);font-weight:700">+${Math.round(f.gain)} ${unit}</span> · ${f.winGain >= 0 ? '+' : ''}${Math.round(f.winGain * 100)}% win chance${flagEmoji(t.team) ? ' · ' + flagEmoji(t.team) : ''}<br>
+            EPA ${t.epa} · ${t.matches} matches${f.why.length ? ' · ' + esc(f.why.join(', ')) : ''}
+          </div>
+          <button onclick="setTeamStatus('${esc(t.team)}','mine')" style="background:var(--card2);border:1px solid var(--accent);border-radius:8px;padding:5px 9px;color:var(--accent);font-size:12px;cursor:pointer;font-weight:700;">★ Pick</button>
+          <button onclick="setTeamStatus('${esc(t.team)}','taken')" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 9px;color:var(--muted);font-size:12px;cursor:pointer;">Taken</button>
+        </div>`; }).join('')}`;
     } else {
       suggestion.style.display = 'none';
     }
@@ -2787,33 +3117,40 @@ function renderPicklist() {
   const myInput = document.getElementById('picklist-my-team');
   if (myInput && picklistMyTeam && !myInput.value) myInput.value = picklistMyTeam;
 
-  const filtered = allTeams.filter(t => {
+  let rows = allTeams.filter(t => {
     if (t.team === picklistMyTeam) return false; // always hide your own team
     const status = teamStatus[t.team] || 'available';
     if (plFilter === 'all') return true;
     return status === plFilter;
   });
+  if (fit && plSort === 'fit') {
+    const g = t => (!teamStatus[t.team] && fit.byTeam[t.team]) ? fit.byTeam[t.team].gain : -Infinity;
+    rows = rows.map((t, i) => ({ t, i })).sort((a, b) => (g(b.t) - g(a.t)) || (a.i - b.i)).map(x => x.t);
+  }
 
-  list.innerHTML = filtered.map((t, i) => {
+  list.innerHTML = rows.map((t, i) => {
     const status = teamStatus[t.team] || 'available';
     const flag = flagEmoji(t.team);
-    const statusColor = status === 'taken' ? 'var(--muted)' : status === 'dnp' ? 'var(--red)' : 'var(--text)';
+    const f = fit && status === 'available' ? fit.byTeam[t.team] : null;
+    const statusColor = status === 'taken' ? 'var(--muted)' : status === 'dnp' ? 'var(--red)' : status === 'mine' ? 'var(--accent)' : 'var(--text)';
     const cardOpacity = status === 'dnp' ? '0.5' : '1';
+    const id = esc(t.team);
+    const btn = (st, label, color) => `<button onclick="setTeamStatus('${id}','${st}')" style="background:var(--card2);border:1px solid ${status === st ? color : 'var(--border)'};border-radius:8px;padding:5px 8px;color:${status === st ? color : 'var(--muted)'};font-size:11px;cursor:pointer;font-weight:600">${label}</button>`;
     return `
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:${cardOpacity}">
+      <div style="background:var(--card);border:1px solid ${status === 'mine' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:${cardOpacity}">
         <div style="font-size:13px;font-weight:700;color:var(--muted);width:24px;text-align:right">${i+1}</div>
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:16px;font-weight:800;color:${statusColor}">T${t.team}</span>
+            <span style="font-size:16px;font-weight:800;color:${statusColor}">T${id}</span>
             <span style="font-size:13px">${flag}</span>
             ${status === 'taken' ? '<span style="font-size:10px;color:var(--muted);background:var(--card2);border-radius:6px;padding:1px 6px">TAKEN</span>' : ''}
             ${status === 'dnp' ? '<span style="font-size:10px;color:var(--red);background:var(--card2);border-radius:6px;padding:1px 6px">DNP</span>' : ''}
+            ${status === 'mine' ? '<span style="font-size:10px;color:var(--accent);background:var(--card2);border-radius:6px;padding:1px 6px">MY ALLIANCE</span>' : ''}
           </div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">EPA ${t.epa} · ${t.shots} shots · ${t.matches} matches</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">EPA ${t.epa} · ${t.shots} shots · ${t.matches} matches${f ? ` · <span style="color:var(--green);font-weight:700">+${Math.round(f.gain)} ${unit}</span>` : ''}</div>
         </div>
         <div style="display:flex;gap:6px">
-          <button onclick="setTeamStatus('${t.team}','taken')" style="background:var(--card2);border:1px solid ${status==='taken'?'var(--muted)':'var(--border)'};border-radius:8px;padding:5px 8px;color:${status==='taken'?'var(--muted)':'var(--muted)'};font-size:11px;cursor:pointer;font-weight:600">✓</button>
-          <button onclick="setTeamStatus('${t.team}','dnp')" style="background:var(--card2);border:1px solid ${status==='dnp'?'var(--red)':'var(--border)'};border-radius:8px;padding:5px 8px;color:${status==='dnp'?'var(--red)':'var(--muted)'};font-size:11px;cursor:pointer;font-weight:600">✕</button>
+          ${btn('mine', '★', 'var(--accent)')}${btn('taken', '✓', 'var(--muted)')}${btn('dnp', '✕', 'var(--red)')}
         </div>
       </div>`;
   }).join('');
@@ -2963,9 +3300,12 @@ let schedCmpA = '', schedCmpB = '';
 
 function setSchedFilter(f) {
   schedFilter = f;
-  ['all','mine','compare'].forEach(x => document.getElementById('sched-filter-'+x)?.classList.toggle('active', x===f));
+  ['all','mine','next','compare','strength'].forEach(x => document.getElementById('sched-filter-'+x)?.classList.toggle('active', x===f));
   const panel = document.getElementById('sched-compare-panel');
   if (panel) panel.style.display = f === 'compare' ? 'flex' : 'none';
+  const np = document.getElementById('sched-next-panel');
+  if (np) np.style.display = f === 'next' ? 'flex' : 'none';
+  if (f === 'next') schedPick = '';
   if (f === 'compare' && !schedCmpA && scheduleMyTeam) {
     schedCmpA = scheduleMyTeam;
     document.getElementById('sched-cmp-a').value = scheduleMyTeam;
@@ -3020,6 +3360,300 @@ function renderScheduleCompare() {
     ${rows.map(r => `<div style="${grid}margin-bottom:6px">
       ${cell(r, a, !!r.ra, 'var(--accent)')}${cell(r, b, !!r.rb, 'var(--accent2)')}
     </div>`).join('')}`;
+}
+
+// ── NEXT MATCH ─────────────────────────────────────────────────────────────
+// Everything for your next match in one place: who is on each side, the prediction, what to watch for, and
+// what scouts wrote about the robots. "Your team" is shared with the Picklist.
+let schedCurrent = '', schedPick = '';   // the match being played now (blank = the one after the last entered result), and a match chosen from the list
+function setMyTeam(v) {
+  v = String(v == null ? '' : v).trim();
+  scheduleMyTeam = picklistMyTeam = v;
+  ['schedule-my-team', 'picklist-my-team'].forEach(id => { const el = document.getElementById(id); if (el && el.value !== v && document.activeElement !== el) el.value = v; });
+  try { localStorage.setItem('frc_picklist_myteam', v); } catch (e) {}
+  if (activePage === 'schedule') renderSchedule();
+  if (activePage === 'picklist') renderPicklist();
+}
+function schedSetCurrent(v) {
+  schedCurrent = String(v || '').replace(/\D/g, '');
+  schedPick = '';
+  try { localStorage.setItem('frc_sched_current', schedCurrent); } catch (e) {}
+  renderSchedule();
+}
+function schedPickMatch(num) { schedPick = String(num); renderSchedule(); window.scrollTo(0, 0); }
+
+function schedCurrentMatch() {
+  if (schedCurrent !== '') return n(schedCurrent);
+  const ks = Object.keys(predResults).map(Number).filter(Number.isFinite);     // from real results, if any were entered
+  return ks.length ? Math.max(...ks) + 1 : 0;
+}
+// your matches from the current one onward (the current match itself counts if you're in it)
+function schedUpcoming() {
+  const me = scheduleMyTeam, cur = schedCurrentMatch();
+  if (!me) return [];
+  return matchSchedule.filter(m => (m.red.includes(me) || m.blue.includes(me)) && n(m.match) >= cur);
+}
+
+// Short facts about a robot that matter in the next match
+function schedTeamTags(t) {
+  const p = predParams(t), s = teamStats[t], lg = predGet().lg, tags = [];
+  const add = (text, color) => tags.push(`<span style="${PRED_CHIP}color:${color};">${text}</span>`);
+  if (!p.known) { add('no scouting data', 'var(--yellow)'); return tags.join(''); }
+  if (p.n < 3) add(`only ${p.n} match${p.n === 1 ? '' : 'es'} scouted`, 'var(--yellow)');
+  const ranked = Object.values(teamStats).sort((a, b) => b.epa - a.epa).map(x => x.team);
+  const rank = ranked.indexOf(t) + 1;
+  if (rank && rank <= Math.max(3, Math.round(ranked.length * 0.1))) add(`#${rank} by EPA`, 'var(--green)');
+  if (p.defRate >= 0.25 && p.defRating >= 2.5) add(`plays defense (${predRound(p.defRating, 1)}/5, ${Math.round(p.defRate * 100)}% of matches)`, 'var(--red)');
+  if (p.auto >= Math.max(10, lg.auto * 1.5)) add(`strong auto (${predRound(p.auto, 0)} shots)`, 'var(--accent)');
+  if (p.passed >= Math.max(12, lg.passed * 2)) add(`passes a lot (${predRound(p.passed, 0)})`, 'var(--text)');
+  if (p.acc >= 80) add(`accurate (${Math.round(p.acc)}%)`, 'var(--green)');
+  else if (p.acc && p.acc < 55) add(`inaccurate (${Math.round(p.acc)}%)`, 'var(--yellow)');
+  if (p.incPerMatch >= 0.4) add('often has problems (comms / stuck / tipped)', 'var(--red)');
+  if (s && s.ignoredEntries) add(`${s.ignoredEntries} typo ignored`, 'var(--muted)');
+  return tags.join('');
+}
+
+// The last couple of things scouts wrote about each robot
+function schedScoutNotes(teams) {
+  const C = predGet();
+  const out = teams.map(t => {
+    const rows = (C.rows[t] || []).filter(r => r.notes && r.notes.trim()).sort((a, b) => n(b.match_number) - n(a.match_number)).slice(0, 2);
+    if (!rows.length) return '';
+    return `<div style="margin-top:6px"><span style="font-weight:700;color:var(--text)">${esc(t)}</span>` + rows.map(r => {
+      const txt = r.notes.trim(), who = (r.username || '').split(' ')[0];
+      return `<div style="color:var(--muted);font-size:12px;line-height:1.45;padding-left:10px;border-left:2px solid var(--border);margin:3px 0">Q${esc(r.match_number)}${who ? ' · ' + esc(who) : ''}: ${esc(txt.length > 170 ? txt.slice(0, 170) + '…' : txt)}</div>`;
+    }).join('') + `</div>`;
+  }).filter(Boolean).join('');
+  return out;
+}
+
+function renderScheduleNext() {
+  const list = document.getElementById('schedule-list');
+  const msg = t => `<div class="empty"><p>${t}</p></div>`;
+  const me = scheduleMyTeam;
+  if (!me) { list.innerHTML = msg('Enter your team number above to see your next match'); return; }
+  if (!schedMatchesFor(me).length) { list.innerHTML = msg(`Team ${esc(me)} isn't in the loaded schedule`); return; }
+  const up = schedUpcoming();
+  if (!up.length) { list.innerHTML = msg(`No matches left for ${esc(me)} from Q${schedCurrentMatch()} on. Change "Current match" above if that's wrong.`); return; }
+
+  const m = up.find(x => String(x.match) === schedPick) || up[0];
+  const usSide = m.red.includes(me) ? 'red' : 'blue', themSide = usSide === 'red' ? 'blue' : 'red';
+  const us = m[usSide], them = m[themSide];
+  const col = { red: '#e05555', blue: '#60a5fa' };
+  const hasData = Object.keys(predGet().models).length > 0;
+
+  let predHtml = '', watch = '';
+  if (hasData && m.red.length && m.blue.length) {
+    const sim = predSimulate(m.red, m.blue, 10000, predSeed(m.red, m.blue));     // the same run the Predict tab shows
+    const pRed = predWinProb(sim), pUs = usSide === 'red' ? pRed : 1 - pRed;
+    const level = predLevel(sim), us$ = sim[usSide], them$ = sim[themSide];
+    const usPct = Math.round(pUs * 100);
+    const verdict = pUs > 0.53 ? 'You are favoured' : pUs < 0.47 ? 'You are the underdog' : 'Too close to call';
+    predHtml = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <div style="font-size:15px;font-weight:800;color:${pUs > 0.53 ? 'var(--green)' : pUs < 0.47 ? 'var(--red)' : 'var(--muted)'}">${verdict}</div>
+        <div style="font-size:12px;color:var(--muted)">${level} confidence</div>
+      </div>
+      <div style="position:relative;height:26px;border-radius:13px;overflow:hidden;background:${col[themSide]}55;border:1px solid var(--border)">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:${usPct}%;background:${col[usSide]}"></div>
+        <div style="position:absolute;inset:0;display:flex;justify-content:space-between;align-items:center;padding:0 12px;font-size:12px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)"><span>You ${usPct}%</span><span>${100 - usPct}% Them</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Projected ${PRED.cal ? 'score' : 'strength'}: you <strong style="color:var(--text)">${Math.round(us$.mean + sim.a)}</strong> – them <strong style="color:var(--text)">${Math.round(them$.mean + sim.a)}</strong></div>`;
+
+    // what to watch
+    const bullets = [];
+    const top = (side, teams) => { const r = sim[side].robots, i = r.indexOf(Math.max(...r)); return { team: teams[i], units: r[i], share: r[i] / Math.max(1e-9, r.reduce((a, b) => a + b, 0)) }; };
+    const theirTop = top(themSide, them), ourTop = top(usSide, us);
+    if (them.length >= 2 && predParams(theirTop.team).known) bullets.push(`Their biggest scorer is <strong>${esc(theirTop.team)}</strong> (about ${Math.round(theirTop.share * 100)}% of their output). Slowing that robot down is the biggest swing available.`);
+    them.filter(t => { const p = predParams(t); return p.known && p.defRate >= 0.25 && p.defRating >= 2.5; }).forEach(t => {
+      const p = predParams(t);
+      bullets.push(`<strong>${esc(t)}</strong> often plays defense (${predRound(p.defRating, 1)}/5, ${Math.round(p.defRate * 100)}% of matches). Expect it to go after your top scorer${predParams(ourTop.team).known ? ' (' + esc(ourTop.team) + ')' : ''}.`);
+    });
+    const thin = [...us.filter(t => t !== me), ...them].filter(t => !predParams(t).known || predParams(t).n < 3);
+    if (thin.length) bullets.push(`Little or no data on ${thin.map(esc).join(', ')}, so treat the prediction with care.`);
+    const why = predExplain(sim);
+    watch = (bullets.length || why.length) ? `
+      <div style="${CARD_STYLE}">
+        <div style="${CARD_H}">What to watch</div>
+        ${bullets.map(b => `<div style="padding:5px 0;font-size:13px;line-height:1.5">• ${b}</div>`).join('')}
+        ${why.length ? `<div style="font-size:11px;color:var(--muted);margin:8px 0 2px">Where the match is decided</div>` + why.map(l => `<div style="padding:3px 0;font-size:12px;color:var(--text)"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${l.side === 'red' ? '#e05555' : '#60a5fa'};margin-right:8px"></span>${l.text}</div>`).join('') : ''}
+      </div>` : '';
+  } else if (!hasData) {
+    predHtml = `<div style="font-size:13px;color:var(--muted)">Load scouting data on the Import tab to see a prediction.</div>`;
+  }
+
+  const robotRows = (teams, side) => teams.map(t => {
+    const s = teamStats[t], id = esc(String(t).replace(/[^\w-]/g, ''));
+    return `<div onclick="showDetail('${id}')" style="cursor:pointer;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <span style="font-size:16px;font-weight:800;color:${col[side]}">${flagEmoji(t)}${esc(t)}${t === me ? ' <span style="font-size:10px;color:var(--muted);font-weight:600">YOU</span>' : ''}</span>
+        <span style="font-size:12px;color:var(--muted);text-align:right">${s ? `EPA ${s.epa} · ${s.avgTotalShots} shots${s.avgAccuracy ? ' · ' + s.avgAccuracy + '%' : ''}` : 'no scouting data'}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;font-size:11px">${schedTeamTags(t)}</div>
+    </div>`;
+  }).join('');
+
+  const notes = schedScoutNotes([...them, ...us.filter(t => t !== me)]);
+  const later = up.filter(x => x !== m).slice(0, 3);
+  const me$ = String(m.match);
+  list.innerHTML = `
+    <div style="${CARD_STYLE}border-color:${col[usSide]}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div><span style="font-size:20px;font-weight:800;color:var(--accent)">Q${esc(me$)}</span>
+          <span style="font-size:13px;color:var(--muted)"> · you are on <strong style="color:${col[usSide]}">${usSide === 'red' ? 'Red' : 'Blue'}</strong>${up[0] === m ? (n(m.match) === schedCurrentMatch() ? ' · current match' : ' · next up') : ''}</span></div>
+        <button onclick="predictFromSchedule('${esc(me$)}');runPrediction()" style="background:var(--card2);border:1px solid var(--border);color:var(--accent);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Full prediction →</button>
+      </div>
+      ${predHtml}
+    </div>
+    ${watch}
+    <div style="${CARD_STYLE}">
+      <div style="${CARD_H};color:${col[usSide]}">Your alliance</div>${robotRows(us, usSide)}
+    </div>
+    <div style="${CARD_STYLE}">
+      <div style="${CARD_H};color:${col[themSide]}">Opponents</div>${robotRows(them, themSide)}
+    </div>
+    ${notes ? `<div style="${CARD_STYLE}"><div style="${CARD_H}">What scouts wrote</div>${notes}</div>` : ''}
+    ${later.length ? `<div style="${CARD_STYLE}"><div style="${CARD_H}">Your matches after this</div>${later.map(x => {
+      const side = x.red.includes(me) ? 'red' : 'blue', mates = x[side].filter(t => t !== me), opp = x[side === 'red' ? 'blue' : 'red'];
+      return `<div onclick="schedPickMatch('${esc(String(x.match))}')" style="cursor:pointer;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <strong style="color:var(--accent)">Q${esc(x.match)}</strong> <span style="color:${col[side]}">${side === 'red' ? 'Red' : 'Blue'}</span>
+        <span style="color:var(--muted)"> · with ${mates.map(esc).join(', ') || '—'} · vs ${opp.map(esc).join(', ')}</span></div>`; }).join('')}</div>` : ''}`;
+}
+function schedMatchesFor(team) { return matchSchedule.filter(m => m.red.includes(team) || m.blue.includes(team)); }
+const CARD_STYLE = 'background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;';
+const CARD_H = 'font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px';
+
+// ── STRENGTH OF SCHEDULE ───────────────────────────────────────────────────
+// How hard is each team's schedule? Every scheduled match is simulated with the real alliances, and again with
+// each team swapped for an exactly average robot. The average robot's expected wins on that team's schedule
+// measure the schedule alone (partners and opponents), without the team's own ability. "Schedule effect" is how
+// many wins that is above or below a typical schedule: negative = harder.
+let sosCache = null, sosFocus = '';
+function sosKey() { return predVersion + ':' + rawData.length + ':' + (PRED.cal ? 'c' : 'u') + ':' + matchSchedule.length + ':' + (matchSchedule[0] ? matchSchedule[0].red.join(',') : ''); }
+
+function schedStrength() {
+  const key = sosKey();
+  if (sosCache && sosCache.key === key) return sosCache.val;
+  const ms = matchSchedule.filter(m => m.red.length && m.blue.length);
+  const C = predGet();
+  const rate = t => { const r = predRobot(predParams(t), null); return PRED.COMPS.reduce((s, k) => s + r.comps[k], 0) * r.rel; };   // one robot's expected output
+  const all = new Set(), known = new Set();
+  ms.forEach(m => [...m.red, ...m.blue].forEach(t => { all.add(t); if (C.models[t]) known.add(t); }));
+  const ratings = {}; all.forEach(t => { ratings[t] = rate(t); });
+  const kv = [...known].map(t => ratings[t]);
+  const field = (kv.length ? avg(kv) : rate(PRED.AVG)) || 1;
+  // Strength score 0-100: where a robot ranks among the scouted robots at this event (50 = middle of the pack).
+  // Ranks rather than raw output, so a couple of elite teams don't make everything else look weak. Unscouted = 50.
+  const sortedR = kv.slice().sort((a, b) => a - b);
+  const score = t => {
+    if (!known.has(t) || sortedR.length < 2) return 50;
+    let less = 0, eq = 0; sortedR.forEach(v => { if (v < ratings[t]) less++; else if (v === ratings[t]) eq++; });
+    return 100 * (less + 0.5 * (eq - 1)) / (sortedR.length - 1);
+  };
+  const rel = list => list.length ? avg(list.map(score)) : 50;
+  const N = 400, teams = {};
+  ms.forEach(m => {
+    const seed = predHash('sos|' + m.match + '|' + rawData.length);
+    const pRed = predWinProb(predSimulate(m.red, m.blue, N, seed));
+    ['red', 'blue'].forEach(side => {
+      const mine = m[side], opp = m[side === 'red' ? 'blue' : 'red'];
+      mine.forEach((t, i) => {
+        const swapped = mine.slice(); swapped[i] = PRED.AVG;
+        const pBaseRed = predWinProb(side === 'red' ? predSimulate(swapped, opp, N, seed) : predSimulate(opp, swapped, N, seed));
+        const p = side === 'red' ? pRed : 1 - pRed, pb = side === 'red' ? pBaseRed : 1 - pBaseRed;
+        const T = teams[t] = teams[t] || { team: t, known: known.has(t), rows: [] };
+        const partners = mine.filter((_, j) => j !== i);
+        T.rows.push({ match: m.match, side, p, pb, partners, opps: opp, partnerScore: rel(partners), oppScore: rel(opp) });
+      });
+    });
+  });
+  const list = Object.values(teams);
+  let sumBase = 0, sumN = 0;
+  list.forEach(T => { T.n = T.rows.length; T.E = T.rows.reduce((s, r) => s + r.p, 0); T.base = T.rows.reduce((s, r) => s + r.pb, 0); sumBase += T.base; sumN += T.n; });
+  const rate0 = sumN ? sumBase / sumN : 0.5;                                                  // an average robot's win chance on a typical schedule
+  list.forEach(T => {
+    T.effect = T.base - T.n * rate0;
+    T.partnerScore = avg(T.rows.map(r => r.partnerScore)); T.oppScore = avg(T.rows.map(r => r.oppScore));
+    T.unscouted = T.rows.reduce((s, r) => s + r.opps.filter(t => !known.has(t)).length, 0);
+  });
+  list.sort((a, b) => (a.effect - b.effect) || (n(a.team) - n(b.team)));
+  list.forEach((T, i) => { T.rank = i + 1; });
+  const val = { teams: list, by: Object.fromEntries(list.map(T => [T.team, T])), field, matches: ms.length, known: known.size };
+  sosCache = { key, val };
+  return val;
+}
+
+function schedPickSos(team) { sosFocus = String(team); renderSchedule(); window.scrollTo(0, 0); }
+
+function renderScheduleStrength() {
+  const list = document.getElementById('schedule-list');
+  const msg = t => `<div class="empty"><p>${t}</p></div>`;
+  if (!Object.keys(predGet().models).length) { list.innerHTML = msg('Load scouting data on the Import tab to rate the schedule'); return; }
+  if (!sosCache || sosCache.key !== sosKey()) {         // simulating every match takes a moment, so say so first
+    list.innerHTML = msg('Working out every team’s schedule…');
+    setTimeout(() => { schedStrength(); if (schedFilter === 'strength') renderSchedule(); }, 30);
+    return;
+  }
+  const S = sosCache.val;
+  if (!S.teams.length) { list.innerHTML = msg('The schedule has no matches to rate'); return; }
+  // strength score out of 100 (50 = an average robot); green when it favours the team, red when it doesn't
+  const rel = (v, goodWhenHigh) => {
+    const d = v - 50, c = Math.abs(d) < 5 ? 'var(--muted)' : ((d > 0) === goodWhenHigh ? 'var(--green)' : 'var(--red)');
+    return `<span style="color:${c}">${Math.round(v)}</span>`;
+  };
+  const eff = v => { const w = Math.round(v * 10) / 10, c = Math.abs(w) < 0.3 ? 'var(--muted)' : w > 0 ? 'var(--green)' : 'var(--red)'; return `<span style="color:${c};font-weight:700">${w > 0 ? '+' : w < 0 ? '−' : ''}${Math.abs(w).toFixed(1)}</span>`; };
+  const col = { red: '#e05555', blue: '#60a5fa' };
+
+  // focus card: the team picked from the table, else your team
+  const focus = (sosFocus && S.by[sosFocus]) ? S.by[sosFocus] : (scheduleMyTeam && S.by[scheduleMyTeam]) ? S.by[scheduleMyTeam] : null;
+  let card = '';
+  if (focus) {
+    const T = focus, verdict = T.effect <= -0.3 ? 'harder than a typical schedule' : T.effect >= 0.3 ? 'easier than a typical schedule' : 'about a typical schedule';
+    const sorted = [...T.rows].sort((a, b) => a.p - b.p);
+    const hard = new Set(sorted.slice(0, 3).map(r => r.match)), easy = new Set(sorted.slice(-3).map(r => r.match));
+    card = `
+      <div style="${CARD_STYLE}border-color:var(--accent)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <div style="font-size:20px;font-weight:800;color:var(--accent)">${flagEmoji(T.team)}${esc(T.team)}</div>
+          <div style="font-size:12px;color:var(--muted)">#${T.rank} hardest of ${S.teams.length}</div>
+        </div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px">${eff(T.effect)} wins: ${verdict}</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">
+          Partners <strong>${rel(T.partnerScore, true)}</strong>/100 · Opponents <strong>${rel(T.oppScore, false)}</strong>/100 <span style="color:var(--muted)">(50 = an average robot, higher = stronger)</span><br>
+          Expected wins: <strong style="color:var(--text)">${T.E.toFixed(1)}</strong> of ${T.n}${T.known ? '' : ' <span style="color:var(--yellow)">(no scouting data for this team, so it is treated as average)</span>'}
+          · an average robot would get ${T.base.toFixed(1)}${T.unscouted ? `<br><span style="color:var(--yellow)">${T.unscouted} opposing robot${T.unscouted === 1 ? '' : 's'} on this schedule ${T.unscouted === 1 ? 'has' : 'have'} no scouting data (treated as average).</span>` : ''}
+        </div>
+        <div style="margin-top:10px">${T.rows.map(r => `
+          <div onclick="predictFromSchedule('${esc(String(r.match))}');runPrediction()" style="cursor:pointer;padding:7px 0;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12px">
+            <span style="font-weight:800;color:var(--accent);min-width:34px">Q${esc(r.match)}</span>
+            <span style="color:${col[r.side]};min-width:34px">${r.side === 'red' ? 'Red' : 'Blue'}</span>
+            <span style="flex:1;color:var(--muted);min-width:0">with ${r.partners.map(esc).join(', ') || '—'} (${rel(r.partnerScore, true)}) · vs ${r.opps.map(esc).join(', ')} (${rel(r.oppScore, false)})</span>
+            <span style="font-weight:700;min-width:62px;text-align:right;color:${r.p >= 0.55 ? 'var(--green)' : r.p <= 0.45 ? 'var(--red)' : 'var(--muted)'}">${Math.round(r.p * 100)}%${hard.has(r.match) && r.p < 0.5 ? ' ↓' : easy.has(r.match) && r.p > 0.5 ? ' ↑' : ''}</span>
+          </div>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Win chances use the team's own scouting. Tap a match for its full prediction.</div>
+      </div>`;
+  }
+
+  const th = 'padding:7px 6px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);background:var(--card2);border-bottom:2px solid var(--border);text-align:center;white-space:nowrap;';
+  const td = 'padding:7px 6px;border-bottom:1px solid var(--border);text-align:center;font-size:12px;';
+  const rows = S.teams.map(T => `
+    <tr onclick="schedPickSos('${esc(String(T.team).replace(/[^\w-]/g, ''))}')" style="cursor:pointer;${T.team === scheduleMyTeam ? 'background:rgba(240,165,0,.10)' : ''}">
+      <td style="${td}color:var(--muted)">${T.rank}</td>
+      <td style="${td}font-weight:800;color:var(--text)">${flagEmoji(T.team)}${esc(T.team)}</td>
+      <td style="${td}">${T.n}</td>
+      <td style="${td}">${rel(T.partnerScore, true)}</td>
+      <td style="${td}">${rel(T.oppScore, false)}</td>
+      <td style="${td}">${T.E.toFixed(1)}</td>
+      <td style="${td}">${eff(T.effect)}</td>
+    </tr>`).join('');
+  list.innerHTML = card + `
+    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin:0 2px 8px">Hardest schedule first. <strong>Partners</strong> and <strong>Opponents</strong> rate the average robot a team plays with or against, out of 100: 50 is an average robot, higher is stronger. <strong>Schedule effect</strong> = wins an average robot would gain or lose on this team's schedule compared with a typical one, so it ignores how good the team is (− = harder). Tap a team for its matches.</div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--card)">
+      <table style="width:100%;border-collapse:collapse"><thead><tr>
+        <th style="${th}">#</th><th style="${th}">Team</th><th style="${th}">Matches</th><th style="${th}">Partners</th><th style="${th}">Opponents</th><th style="${th}">Exp. wins</th><th style="${th}">Schedule effect</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
 }
 
 // ── SCHEDULE IMAGE OCR ──────────────────────────────────────────────────────
@@ -3249,6 +3883,8 @@ function renderSchedule() {
   }
 
   if (schedFilter === 'compare') { renderScheduleCompare(); return; }
+  if (schedFilter === 'next') { renderScheduleNext(); return; }
+  if (schedFilter === 'strength') { renderScheduleStrength(); return; }
 
   let matches = matchSchedule;
   if (schedFilter === 'mine' && scheduleMyTeam) {
@@ -3316,7 +3952,11 @@ loadFlags();
 predLoadSaved();
 try { teamStatus = JSON.parse(localStorage.getItem('frc_team_status') || '{}'); } catch(e) { teamStatus = {}; }
 picklistMyTeam = localStorage.getItem('frc_picklist_myteam') || '';
-if (picklistMyTeam) { const _pli = document.getElementById('picklist-my-team'); if (_pli) _pli.value = picklistMyTeam; }
+if (picklistMyTeam) {
+  scheduleMyTeam = picklistMyTeam;      // "your team" is one setting shared by the Schedule and Picklist tabs
+  ['picklist-my-team', 'schedule-my-team'].forEach(id => { const el = document.getElementById(id); if (el) el.value = picklistMyTeam; });
+}
+try { schedCurrent = localStorage.getItem('frc_sched_current') || ''; const _sd = document.getElementById('sched-done'); if (_sd) _sd.value = schedCurrent; } catch (e) {}
 // Always re-parse from raw text so any parser improvements take effect immediately
 const _savedScheduleRaw = localStorage.getItem('frc_schedule_raw');
 if (_savedScheduleRaw) {
