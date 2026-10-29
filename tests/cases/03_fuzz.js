@@ -27,13 +27,14 @@ function exercise() {
   teams.slice(0, 3).forEach(function (x) { T('team detail ' + x, function () { showDetail(x); closeDetail(); }); });
   T('team compare', function () { E('compare-a').value = teams[0] || ''; E('compare-b').value = teams[1] || ''; renderCompare(); });
   T('notes', function () { renderNotes(); if (teams[0]) { openNotesTeam(teams[0]); openNoteDetail(teams[0], 0); } });
-  T('picklist', function () { renderPicklist(); ['all', 'available', 'taken', 'dnp'].forEach(setPlFilter); if (teams[0]) cycleFlag(teams[0]); renderPicklist(); });
+  T('picklist lists', function () { showPage('picklist'); ['first', 'second', 'board'].forEach(pkTab); pkTab('first'); if (teams[0]) cycleFlag(teams[0]); renderPicklist(); });
   var ms = []; for (var i = 0; i < Math.min(12, Math.max(0, teams.length - 5)); i++) ms.push({ match: i + 1, red: teams.slice(i, i + 3), blue: teams.slice(i + 3, i + 6) });
   matchSchedule = ms;
   T('schedule views', function () { showPage('schedule'); ['all', 'mine', 'compare'].forEach(setSchedFilter); schedCmpA = teams[0] || ''; schedCmpB = teams[1] || ''; renderSchedule(); setSchedFilter('all'); });
   T('strength view', function () { showPage('schedule'); setSchedFilter('strength'); sosCache = null; schedStrength(); renderSchedule(); schedPickSos(teams[0] || ''); schedPickSos('nope'); setSchedFilter('all'); });
   T('next view', function () { showPage('schedule'); setMyTeam(teams[0] || ''); setSchedFilter('next'); schedSetCurrent('1'); schedPickMatch('3'); schedSetCurrent(''); setSchedFilter('all'); setMyTeam(''); });
-  T('picklist fit', function () { showPage('picklist'); setMyTeam(teams[0] || ''); renderPicklist(); teams.slice(1, 3).forEach(function (x) { setTeamStatus(x, 'mine'); }); renderPicklist(); setPlSort('epa'); setPlFilter('mine'); setPlFilter('all'); setPlSort('fit'); resetPicklistStatuses(); setMyTeam(''); renderPicklist(); });
+  T('picklist actions', function () { showPage('picklist'); setMyTeam(teams[0] || ''); pkTab('first'); renderPicklist(); if (teams[1]) { pkAvoid(teams[1]); pkMove('first', teams[2] || teams[1], -1); pkPlan(teams[2] || ''); pkResetOrder('first'); pkRestore(teams[1]); } pkTab('second'); renderPicklist(); setMyTeam(''); renderPicklist(); });
+  T('draft board', function () { showPage('picklist'); setMyTeam(teams[0] || ''); pkTab('board'); renderPicklist(); pkPreviewState(); try { pkProjectionBody(pkPreviewState()); } catch (e) {} pkStart(); for (var q = 0; q < 6; q++) { var s = pkReplay(), inf = draftInfo(s); if (!inf) break; pkRecord(draftEligible(s, inf)[0]); } renderPicklist(); try { pkProjectionBody(pkReplay()); } catch (e) { throw e; } pkUndo(); pkRestart(); pkTab('first'); });
   T('data quality', function () { predRenderDataNotes(); predQualitySummary(); renderLoadedFiles(); predScoutAudit(); predColumnReport(); });
   T('honest backtest', function () { var res = {}; matchSchedule.slice(0, 12).forEach(function (m, i) { res[m.match] = { match: m.match, red: 20 + i * 7, blue: 90 - i * 3 }; }); predBacktest(res, true); predBacktest(res, false); predForecast(); });
   T('rotation', function () { E('rot-scouts').value = Array.from({ length: 12 }, function (_, i) { return 'S' + i; }).join('\n'); generateRotation(); });

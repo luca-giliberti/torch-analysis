@@ -14,13 +14,12 @@ loadFromCache();
 if (!Object.keys(teamStats).length) { renderRankings(); renderTeamSearch(); }     // a fresh start says what to do instead of showing a blank page
 loadFlags();
 predLoadSaved();
-try { teamStatus = JSON.parse(localStorage.getItem('frc_team_status') || '{}'); } catch(e) { teamStatus = {}; }
+pkLoad();       // the Picklist's saved lists, draft board and avoided teams
 picklistMyTeam = localStorage.getItem('frc_picklist_myteam') || '';
 if (picklistMyTeam) {
   scheduleMyTeam = picklistMyTeam;      // "your team" is one setting shared by the Schedule and Picklist tabs
   ['picklist-my-team', 'schedule-my-team'].forEach(id => { const el = document.getElementById(id); if (el) el.value = picklistMyTeam; });
 }
-try { const _dr = document.getElementById('draft-rank'); if (_dr) _dr.value = localStorage.getItem('frc_my_rank') || ''; } catch (e) {}
 try { schedCurrent = localStorage.getItem('frc_sched_current') || ''; const _sd = document.getElementById('sched-done'); if (_sd) _sd.value = schedCurrent; } catch (e) {}
 // Always re-parse from raw text so any parser improvements take effect immediately
 const _savedScheduleRaw = localStorage.getItem('frc_schedule_raw');

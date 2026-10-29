@@ -225,6 +225,7 @@ function clearAllData() {
   renderLoadedFiles();
   predRenderDataNotes();
   buildChartSelectors();
+  renderPicklist();
   showStatus('Data cleared.', 'muted');
 }
 

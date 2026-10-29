@@ -71,7 +71,7 @@
   });
 })();
 </script>
-<link rel="stylesheet" href="css/styles.css?v=202610281021">
+<link rel="stylesheet" href="css/styles.css?v=202610281041">
 </head>
 <body>
 
@@ -137,35 +137,18 @@
 <div id="page-picklist" class="page">
   <div class="header"><h1>Alliance <span>Picklist</span></h1></div>
   <div style="padding:0 4px">
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Your Team</div>
-      <input id="picklist-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Enter your team number"
-        style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-size:16px;font-weight:700;outline:none;-webkit-appearance:none;"
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Your team</div>
+      <input id="picklist-my-team" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Team #"
+        style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:700;outline:none;-webkit-appearance:none;"
         oninput="setMyTeam(this.value)">
     </div>
-    <div id="picklist-suggestion" style="display:none;background:var(--card);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;"></div>
-    <details id="draft-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;">
-      <summary style="cursor:pointer;font-size:14px;font-weight:700;">Simulate alliance selection</summary>
-      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">Plays out the draft 200 times: captains (seeds 1–8) pick the strongest robot left, you pick the best fit for your alliance. Shows who will still be there at your pick, or your chance of being picked if you are not a captain.</div>
-      <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-        <input id="draft-rank" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Your qualification rank (blank = estimate)" style="flex:1;min-width:0;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;-webkit-appearance:none;">
-        <button class="btn" style="margin:0;flex:0 0 auto;width:auto;padding:9px 16px" onclick="draftRun()">Simulate</button>
-      </div>
-      <div id="draft-output"></div>
-    </details>
-    <div class="selector-bar" style="margin-bottom:10px">
-      <div class="selector-chip active" id="pl-filter-all" onclick="setPlFilter('all')">All</div>
-      <div class="selector-chip" id="pl-filter-available" onclick="setPlFilter('available')">Available</div>
-      <div class="selector-chip" id="pl-filter-taken" onclick="setPlFilter('taken')">Taken</div>
-      <div class="selector-chip" id="pl-filter-dnp" onclick="setPlFilter('dnp')">DNP</div>
-      <div class="selector-chip" id="pl-filter-mine" onclick="setPlFilter('mine')">Mine</div>
+    <div class="selector-bar" style="margin-bottom:12px">
+      <div class="selector-chip active" id="pk-tab-first" onclick="pkTab('first')">First pick</div>
+      <div class="selector-chip" id="pk-tab-second" onclick="pkTab('second')">Second pick</div>
+      <div class="selector-chip" id="pk-tab-board" onclick="pkTab('board')">Draft board</div>
     </div>
-    <div class="selector-bar" style="margin-bottom:10px">
-      <div class="selector-chip active" id="pl-sort-fit" onclick="setPlSort('fit')">Best fit for my alliance</div>
-      <div class="selector-chip" id="pl-sort-epa" onclick="setPlSort('epa')">Highest EPA</div>
-    </div>
-    <div id="picklist-list"></div>
-    <button class="btn secondary" onclick="resetPicklistStatuses()" style="margin-top:12px;width:100%">Reset All Statuses</button>
+    <div id="pk-body"></div>
   </div>
 </div>
 
@@ -535,18 +518,18 @@
   <div id="team-detail-content"></div>
 </div>
 
-<script src="js/core.js?v=202610281021"></script>
-<script src="js/views.js?v=202610281021"></script>
-<script src="js/charts.js?v=202610281021"></script>
-<script src="js/notes.js?v=202610281021"></script>
-<script src="js/navigation.js?v=202610281021"></script>
-<script src="js/predictor-model.js?v=202610281021"></script>
-<script src="js/predictor-ui.js?v=202610281021"></script>
-<script src="js/flags.js?v=202610281021"></script>
-<script src="js/picklist.js?v=202610281021"></script>
-<script src="js/rotation.js?v=202610281021"></script>
-<script src="js/schedule.js?v=202610281021"></script>
-<script src="js/init.js?v=202610281021"></script>
+<script src="js/core.js?v=202610281041"></script>
+<script src="js/views.js?v=202610281041"></script>
+<script src="js/charts.js?v=202610281041"></script>
+<script src="js/notes.js?v=202610281041"></script>
+<script src="js/navigation.js?v=202610281041"></script>
+<script src="js/predictor-model.js?v=202610281041"></script>
+<script src="js/predictor-ui.js?v=202610281041"></script>
+<script src="js/flags.js?v=202610281041"></script>
+<script src="js/picklist.js?v=202610281041"></script>
+<script src="js/rotation.js?v=202610281041"></script>
+<script src="js/schedule.js?v=202610281041"></script>
+<script src="js/init.js?v=202610281041"></script>
 
 </body>
 </html>

@@ -28,8 +28,8 @@ It prints PASS / FAIL / SKIP per case and exits non-zero if anything failed. **R
 | `cases/06_banner_syntax.js` | Broken app script: the banner still explains why |
 | `cases/07_predict_button.js` | Predict Winner in every situation |
 | `cases/08_schedule_views.js` | Next / Strength / Compare, shared "your team" |
-| `cases/09_picklist.js` | Alliance suggestions and statuses |
-| `cases/11_draft.js` | Alliance selection simulation |
+| `cases/09_picklist.js` | First-pick and second-pick lists, your own order, avoided teams, planned first pick, saving |
+| `cases/11_draft.js` | The draft rules, the live draft board, and the simulation from a half-played draft |
 | `cases/10_real_data.js` | Real data (needs `-Data`) |
 | `fixtures/` | Public schedules and scores from The Blue Alliance (no private data) |
 

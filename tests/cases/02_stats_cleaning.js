@@ -36,8 +36,8 @@ E('compare-a').value = '111'; E('compare-b').value = '222'; renderCompare();
 t.check('Compare tab uses cleaned numbers', E('compare-results').textContent.indexOf('68') > -1, '');
 E('compare-a').value = '0111'; E('compare-b').value = '00222'; renderCompare();
 t.check('Compare: leading zeros are ignored (0111 is team 111)', E('compare-results').textContent.indexOf('68') > -1, E('compare-results').textContent.slice(0, 80));
-showPage('picklist'); renderPicklist();
-t.check('Picklist lists the cleaned EPA', E('picklist-list').textContent.indexOf('EPA 68') > -1, '');
+showPage('picklist'); pkTab('first'); renderPicklist();
+t.check('Picklist lists the cleaned EPA', E('pk-body').textContent.indexOf('EPA 68') > -1 && E('pk-body').textContent.indexOf('EPA 40') > -1, E('pk-body').textContent.slice(0, 120));
 
 // the charts use the same observations
 var ob = chObs('111');
